@@ -4,7 +4,7 @@ import "dotenv/config";
 import http from "http";
 import mongoose from "mongoose";
 import { connectDb } from "./config/db.config.js";
-
+import authRoutes from "./routes/auth.routes.js";
 
 
 const PORT = process.env.PORT || 5000;
@@ -26,6 +26,8 @@ connectDb();
 app.get("/", (req, res) => {
     res.send("api is working");
 });
+
+app.use("/api/auth", authRoutes);
 
 
 const server = http.createServer(app);

@@ -1,27 +1,27 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import EmailOtp from "../models/emailOtp.models.js";
-import { sendOptNotification, sendOtpNotification } from "./bookingNotifications.utils.js";
+import { EmailOtp } from "../models/emailOtp.models.js";
+import { sendOtpNotification } from "./bookingNotifications.utils.js";
 
 
 const OTP_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
 
 
-const normalizedEmail = (email = "") => email.toLowerCase().trim();
+const normalizeEmail = (email = "") => email.toLowerCase().trim();
 
 
 const createCode = () => crypto.randomInt(100000, 1000000).toString();
 
 export const requestEmailOtp = async({ email, purpose }) => {
-    const normalizedEmail = normalizedEmail(email);
+    const normalizedEmail = normalizeEmail(email);
     if(!normalizedEmail){
         throw new Error("email is requied");
     }
 
     const code = createCode();
     const codeHash = await bcrypt.hash(code, 10);
-    const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+    const expireAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
     await EmailOtp.deleteMany({ email: normalizedEmail, purpose, consumeAt: null });
 
@@ -29,7 +29,7 @@ export const requestEmailOtp = async({ email, purpose }) => {
         email: normalizedEmail,
         purpose,
         codeHash,
-        expiresAt
+        expireAt
     });
 
     await sendOtpNotification({ email: normalizedEmail, code, purpose });
@@ -42,7 +42,7 @@ export const requestEmailOtp = async({ email, purpose }) => {
 };
 
 export const verifyEmailOtp = async({ email, purpose, code, consume = false }) => {
-    const normalizedEmail = normalizedEmail(email);
+    const normalizedEmail = normalizeEmail(email);
 
     if(!normalizedEmail || !code){
         return {
