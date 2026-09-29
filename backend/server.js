@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import { connectDb } from "./config/db.config.js";
 import authRoutes from "./routes/auth.routes.js";
 import serviceRoutes from "./routes/service.routes.js";
-
+import availabilityRoutes from "./routes/availbility.routes.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -30,6 +30,7 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/services", serviceRoutes);
+app.use("/api/availability", availabilityRoutes);
 
 const server = http.createServer(app);
 server.on("error", (error) => {
