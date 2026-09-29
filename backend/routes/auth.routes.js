@@ -10,8 +10,8 @@ router.post("/register", registerUser);
 router.post("/register/request-otp", requestRegistrationOTP);
 router.post("/register/verify-otp", verifyRegistrationOtp);
 router.post("/login", loginUser);
-router.post("/me", auth, getMe);
-router.post("/profile", auth, updateProfile);
+router.get("/me", auth, getMe);
+router.patch("/profile", auth, updateProfile);
 
 
 export default router;

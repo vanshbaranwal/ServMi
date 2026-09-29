@@ -7,7 +7,7 @@ const router = express.Router();
 
 
 router.get("/", auth, listAvailability);
-router.get("/", auth, saveAvailability);
+router.put("/", auth, saveAvailability);
 
 
 export default router;
