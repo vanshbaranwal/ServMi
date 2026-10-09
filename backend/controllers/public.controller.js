@@ -1,6 +1,6 @@
-import Booking from "../models/booking.models.js";
-import Service from "../models/service.models.js";
-import User from "../models/user.models.js";
+import { Booking } from "../models/booking.models.js";
+import { Service } from "../models/service.models.js";
+import { User } from "../models/user.models.js";
 import { buildCustomerCalendarUrl } from "../utils/calendarLink.utils.js";
 import { createBookingCalendarEvent } from "../utils/googleCalendar.utils.js";
 import { sendBookingNotification } from "../utils/bookingNotifications.utils.js";
@@ -8,7 +8,6 @@ import { requestEmailOtp, verifyEmailOtp } from "../utils/emailOtp.utils.js";
 import { generateSlots } from "../utils/slotGenerator.utils.js";
 import { getStripe, toStripeAmount } from "../utils/stripe.utils.js";
 import { calculatePlatformSplit } from "../utils/money.utils.js";
-import { timeOverlap } from "../utils/overlap.utils.js";
 import { createBookingPayoutTransaction } from "../utils/wallet.utils.js";
 
 

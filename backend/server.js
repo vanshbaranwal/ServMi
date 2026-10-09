@@ -11,6 +11,8 @@ import integrationRoutes from "./routes/integration.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import publicRoutes from "./routes/public.routes.js";
+import adminRoutes from "./routes/adminRoutes.js"
+
 
 const PORT = process.env.PORT || 5000;
 
@@ -33,6 +35,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/availability", availabilityRoutes);
 app.use("/api/integrations", integrationRoutes);
