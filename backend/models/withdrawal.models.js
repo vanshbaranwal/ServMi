@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 
-const withdrawlSchema = new mongoose.Schema({
+const withdrawalSchema = new mongoose.Schema({
     
     userId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -47,4 +47,4 @@ const withdrawlSchema = new mongoose.Schema({
 
 
 
-export const Withdrawl = mongoose.model("Withdrawl", withdrawlSchema);
+export const Withdrawal = mongoose.model("Withdrawal", withdrawalSchema);

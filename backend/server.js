@@ -9,6 +9,7 @@ import serviceRoutes from "./routes/service.routes.js";
 import availabilityRoutes from "./routes/availbility.routes.js";
 import integrationRoutes from "./routes/integration.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -35,6 +36,7 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/availability", availabilityRoutes);
 app.use("/api/integrations", integrationRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/payments", paymentRoutes);
 
 
 const server = http.createServer(app);
