@@ -10,6 +10,7 @@ import availabilityRoutes from "./routes/availbility.routes.js";
 import integrationRoutes from "./routes/integration.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import publicRoutes from "./routes/public.routes.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -37,7 +38,8 @@ app.use("/api/availability", availabilityRoutes);
 app.use("/api/integrations", integrationRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
-
+app.use("/api/public", publicRoutes);
+app.use("/public", publicRoutes);
 
 const server = http.createServer(app);
 server.on("error", (error) => {
