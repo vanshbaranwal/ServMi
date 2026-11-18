@@ -1,16 +1,30 @@
-# React + Vite
+# ServMi frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ServMi's React frontend uses Vite, Tailwind CSS, shadcn/ui, React Router, Axios, and Zustand.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Start the backend from `../backend` on port `5000`.
+2. Install dependencies with `npm install`.
+3. Start the frontend with `npm run dev`.
 
-## React Compiler
+During development, Vite proxies `/api` requests to `http://localhost:5000`. For a deployed frontend, set `VITE_API_URL` to the backend origin.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Source structure
 
-## Expanding the ESLint configuration
+```text
+src/
+├── components/      Shared application controls
+│   └── ui/          shadcn/ui primitives
+├── layout/          Marketing, booking, provider, and admin shells
+├── lib/             API, navigation, and formatting helpers
+├── page/            Route-level pages
+└── store/           Shared Zustand state
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+This follows the folder naming used by the LeetSpase frontend while keeping ServMi's design and product logic independent.
+
+## Checks
+
+- `npm run lint`
+- `npm run build`
