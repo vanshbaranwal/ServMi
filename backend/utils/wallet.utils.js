@@ -1,9 +1,10 @@
+import mongoose from "mongoose";
 import { WalletTransaction } from "../models/walletTransaction.models.js";
 import { Withdrawal } from "../models/withdrawal.models.js";
 
 
 export const createBookingPayoutTransaction = async({ booking, description }) => {
-    if(!booking?.providePayoutAmount){
+    if(booking?.paymentStatus !== "paid" || !booking.providerPayoutAmount || booking.providerPayoutAmount <= 0){
         return null;
     }
 
@@ -28,51 +29,42 @@ export const createBookingPayoutTransaction = async({ booking, description }) =>
     }
 };
 
-export const getWalletSummary = async(userId) => {
-    const [rows, withdrawlRows] = await Promise.all([
-        WalletTransaction.aggregate([
-            
-            {
-                $match: {
-                    user
-                }
-            },
-            {
-                $group: {
-                    _id: `$type`,
-                    total: { $sum: "$amount" }
-                }
-            }
-        ]),
+export const getWalletSummary = async(userId, session) => {
+    const ownerId = userId instanceof mongoose.Types.ObjectId
+        ? userId
+        : new mongoose.Types.ObjectId(String(userId));
 
-        Withdrawl.aggregate([
-            {
-                $match: {
-                    userId
-                }
-            },
-            {
-                $group: {
-                    _id: "$status",
-                    total: { $sum: "$amount" }
-                }
-            }
-        ])
+    const walletQuery = WalletTransaction.aggregate([
+        { $match: { userId: ownerId } },
+        { $group: { _id: "$type", total: { $sum: "$amount" } } }
+    ]);
+    const withdrawalQuery = Withdrawal.aggregate([
+        { $match: { userId: ownerId } },
+        { $group: { _id: "$status", total: { $sum: "$amount" } } }
     ]);
 
+    if(session){
+        walletQuery.session(session);
+        withdrawalQuery.session(session);
+    }
+
+    // MongoDB transactions cannot run operations in parallel on one session.
+    const rows = await walletQuery;
+    const withdrawalRows = await withdrawalQuery;
+
     const totals = rows.reduce((acc, row) => ({ ...acc, [row._id]: row.total }), {});
-    const withdrawlTotals = withdrawlRows.reduce((acc, row) => ({ ...acc, [row._id]: row.total }), {});
+    const withdrawalTotals = withdrawalRows.reduce((acc, row) => ({ ...acc, [row._id]: row.total }), {});
     const earned = totals.booking_payout || 0;
-    const held = totals.withdrawl_hold || 0;
-    const reversed = totals.withdrawl_reversal || 0;
-    const pendingWithdrawls = (withdrawlTotals.pending || 0) + (withdrawlTotals.processing || 0);
-    const paidWithdrawls = withdrawlTotals.paid || 0;
+    const held = (totals.withdrawal_hold || 0) + (totals.withdrawl_hold || 0);
+    const reversed = (totals.withdrawal_reversal || 0) + (totals.withdrawl_reversal || 0);
+    const pendingWithdrawals = (withdrawalTotals.pending || 0) + (withdrawalTotals.processing || 0);
+    const paidWithdrawals = withdrawalTotals.paid || 0;
 
     return {
         earned,
-        withdrawOrPending: held - reversed,
-        pendingWithdrawls,
-        paidWithdrawls,
+        withdrawnOrPending: held - reversed,
+        pendingWithdrawals,
+        paidWithdrawals,
         available: Math.max(0, earned - held + reversed)
     };
 };

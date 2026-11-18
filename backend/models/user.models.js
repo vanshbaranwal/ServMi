@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true,
-        minlenght: 6
+        minlength: 6
     },
 
     slug: {
@@ -93,7 +93,7 @@ const userSchema = new mongoose.Schema({
             default: ""
         },
 
-        ifse: {
+        ifsc: {
             type: String,
             default: "",
             trim: true,
@@ -114,6 +114,12 @@ const userSchema = new mongoose.Schema({
         updatedAt: {
             type: Date
         }
+    },
+
+    walletVersion: {
+        type: Number,
+        default: 0,
+        select: false
     }
     
 }, { timestamps: true });

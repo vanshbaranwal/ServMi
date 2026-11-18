@@ -13,9 +13,12 @@ export const minutesToTime = (totalMinutes) => {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 };
 
+export const isValidTime = (value) => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
 export const isValidTimeRange = (startTime, endTime) => {
-    return timeToMinutes(startTime) < timeToMinutes(endTime);
-};;
+    return isValidTime(startTime) && isValidTime(endTime)
+        && timeToMinutes(startTime) < timeToMinutes(endTime);
+};
 
 export const getDayOfWeek = (date) => {
     return new Date(`${date}T00:00:00`).getDay();

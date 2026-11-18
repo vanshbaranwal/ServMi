@@ -86,11 +86,11 @@ const formatMoney = (amount = 0, currency = 'inr') => {
   }).format(amount / 100);
 };
 
-const formatDateTime = (booking, timezone = 'Asia/Kolkata') => {
-  const date = new Date(`${booking.date}T${booking.startTime}:00`);
+export const formatBookingDateTime = (booking) => {
+  const date = new Date(`${booking.date}T00:00:00Z`);
   const displayDate = new Intl.DateTimeFormat('en-IN', {
     dateStyle: 'full',
-    timeZone: timezone,
+    timeZone: 'UTC',
   }).format(date);
 
   return `${displayDate}, ${booking.startTime}-${booking.endTime}`;
@@ -238,6 +238,7 @@ const sendWithBrevo = async ({ to, subject, text, htmlContent, senderName, reply
     });
 
     req.on('error', (e) => reject(e));
+    req.setTimeout(15000, () => req.destroy(new Error('Email provider timed out')));
     req.write(postData);
     req.end();
   });
@@ -246,7 +247,7 @@ const sendWithBrevo = async ({ to, subject, text, htmlContent, senderName, reply
 const buildBookingMessage = ({ business, service, booking, type, recipientType }) => {
   const businessName = business.businessName || business.name || 'ServMi';
   const serviceName = service.name || 'appointment';
-  const appointmentTime = formatDateTime(booking, business.timezone);
+  const appointmentTime = formatBookingDateTime(booking);
   const bookingStatus = String(booking.status || '').replace('_', ' ');
   const paymentStatus = String(booking.paymentStatus || 'not_required').replace('_', ' ');
   const amount = formatMoney(booking.amount || 0, booking.currency || 'inr');
@@ -296,7 +297,7 @@ const buildBookingMessage = ({ business, service, booking, type, recipientType }
 
 export const sendTransactionalEmail = sendWithBrevo;
 
-export const sendBookingNotification = async ({ business, service, booking, type = 'confirmed' }) => {
+export const sendBookingNotification = async ({ business, service, booking, type = 'confirmed', recipientType }) => {
   const configStatus = getEmailConfigStatus();
   if (!configStatus.configured) {
     return {
@@ -308,7 +309,8 @@ export const sendBookingNotification = async ({ business, service, booking, type
   const recipients = [
     { email: booking.customerEmail, type: 'customer' },
     { email: business.email, type: 'provider' },
-  ].filter((recipient, index, list) => (
+  ].filter((recipient) => !recipientType || recipient.type === recipientType)
+    .filter((recipient, index, list) => (
     recipient.email && list.findIndex((candidate) => candidate.email === recipient.email) === index
   ));
 

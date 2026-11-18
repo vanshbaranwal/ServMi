@@ -1,5 +1,5 @@
 import { Availability } from "../models/availability.models.js";
-import { isValidTimeRange } from "../utils/time.utils.js";
+import { isValidTimeRange, timeToMinutes } from "../utils/time.utils.js";
 
 
 export const listAvailability = async(req, res) => {
@@ -24,18 +24,23 @@ export const listAvailability = async(req, res) => {
 export const saveAvailability = async(req, res) => {
     try {
         
-        const { dayOfWeek, slots } = req.body;
+        const { dayOfWeek, slots } = req.body || {};
 
-        if(dayOfWeek === undefined || dayOfWeek < 0 || dayOfWeek > 6){
+        if(!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6 || !Array.isArray(slots)){
             return res.status(400).json({
                 success: false,
-                message: "valid day of week is required"
+                message: "Valid day of week and slots are required"
             });
         }
 
-        const cleanedSlots = (slots || []).filter((slot) => (
-            slot.startTime && slot.endTime && isValidTimeRange(slot.startTime, slot.endTime)
-        ));
+        if (!slots.every((slot) => slot && isValidTimeRange(slot.startTime, slot.endTime))) {
+            return res.status(400).json({ success: false, message: "Every availability window needs valid times" });
+        }
+        const cleanedSlots = [...slots].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+        if (cleanedSlots.some((slot, index) => index > 0
+            && timeToMinutes(slot.startTime) < timeToMinutes(cleanedSlots[index - 1].endTime))) {
+            return res.status(400).json({ success: false, message: "Availability windows cannot overlap" });
+        }
 
         const availability = await Availability.findOneAndUpdate(
             {
@@ -47,7 +52,8 @@ export const saveAvailability = async(req, res) => {
             },
             {
                 new: true,
-                upsert: true
+                upsert: true,
+                runValidators: true
             }
         );
 

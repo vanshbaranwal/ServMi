@@ -57,7 +57,7 @@ const bookingSchema = new mongoose.Schema({
 
     paymentStatus: {
         type: String,
-        enum: ["not_required", "pending", "paid", "failed"],
+        enum: ["not_required", "pending", "paid", "failed", "refund_pending", "refunded", "refund_failed"],
         default: "not_required"
     },
 
@@ -66,6 +66,53 @@ const bookingSchema = new mongoose.Schema({
         default: "",
         index: true
     },
+
+    accessTokenHash: {
+        type: String,
+        select: false
+    },
+
+    holdExpiresAt: {
+        type: Date
+    },
+
+    stripeRefundId: {
+        type: String,
+        default: ""
+    },
+
+    stripePaymentIntentId: {
+        type: String,
+        default: "",
+        index: true
+    },
+
+    paymentReviewRequired: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+
+    paymentReviewReason: {
+        type: String,
+        default: ""
+    },
+
+    payoutRecordedAt: {
+        type: Date
+    },
+
+    fulfillmentVersion: {
+        type: Number,
+        default: 0
+    },
+
+    calendarSyncedAt: Date,
+    calendarSyncLeaseUntil: Date,
+    confirmationCustomerEmailSentAt: Date,
+    confirmationCustomerEmailLeaseUntil: Date,
+    confirmationProviderEmailSentAt: Date,
+    confirmationProviderEmailLeaseUntil: Date,
 
     amount: {
         type: Number,

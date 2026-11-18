@@ -1,10 +1,14 @@
 import { Availability } from "../models/availability.models.js";
 import { Booking } from "../models/booking.models.js";
 import { timeOverlap } from "./overlap.utils.js";
-import { getDayOfWeek, minutesToTime, timeToMinutes } from "./time.utils.js";
+import { getDayOfWeek, isValidTimeRange, minutesToTime, timeToMinutes } from "./time.utils.js";
 
 
 export const generateSlots = async({ userId, service, date }) => {
+
+    if (!Number.isSafeInteger(service?.duration) || service.duration < 5) {
+        return [];
+    }
 
     const dayOfWeek = getDayOfWeek(date);
     const availability = await Availability.findOne({ userId, dayOfWeek });
@@ -13,6 +17,7 @@ export const generateSlots = async({ userId, service, date }) => {
         return [];
     }
 
+    const now = new Date();
     const bookings = await Booking.find({
         userId,
         date,
@@ -22,9 +27,13 @@ export const generateSlots = async({ userId, service, date }) => {
             },
             {
                 status: "pending_payment",
-                createdAt: {
-                    $gte: new Date(Date.now() - 30 * 60 * 1000)
-                }
+                $or: [
+                    { holdExpiresAt: { $gt: now } },
+                    {
+                        holdExpiresAt: { $exists: false },
+                        createdAt: { $gte: new Date(now.getTime() - 30 * 60 * 1000) }
+                    }
+                ]
             }
         ]
     });
@@ -32,7 +41,7 @@ export const generateSlots = async({ userId, service, date }) => {
     const slots = [];
 
 
-    availability.slots.forEach((window) => {
+    availability.slots.filter((window) => isValidTimeRange(window.startTime, window.endTime)).forEach((window) => {
         let cursor = timeToMinutes(window.startTime);
         const end = timeToMinutes(window.endTime);
 
@@ -57,7 +66,8 @@ export const generateSlots = async({ userId, service, date }) => {
         }
     });
 
-    return slots;
+    return [...new Map(slots.map((slot) => [`${slot.startTime}-${slot.endTime}`, slot])).values()]
+        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
     
 };
 

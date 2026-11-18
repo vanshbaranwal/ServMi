@@ -16,15 +16,15 @@ const walletTransactionSchema = new mongoose.Schema({
         index: true
     },
 
-    withdrawlId: {
+    withdrawalId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Withdrawl",
+        ref: "Withdrawal",
         index: true
     },
 
     type: {
         type: String,
-        enum: ["booking_payout", "withdrawl_hold", "withdrawl_reversal"],
+        enum: ["booking_payout", "withdrawal_hold", "withdrawal_reversal"],
         required: true
     },
 
@@ -39,6 +39,12 @@ const walletTransactionSchema = new mongoose.Schema({
     },
 
     status: {
+        type: String,
+        default: "",
+        trim: true
+    },
+
+    description: {
         type: String,
         default: "",
         trim: true
@@ -58,6 +64,14 @@ walletTransactionSchema.index(
                 $exists: true
             }
         }
+    }
+);
+
+walletTransactionSchema.index(
+    { withdrawalId: 1, type: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { withdrawalId: { $exists: true } }
     }
 );
 

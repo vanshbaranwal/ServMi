@@ -78,13 +78,24 @@ export const createBookingCalendarEvent = async ({ business, service, booking })
         return { customerCalendarUrl };
     }
 
-    const calendar = getCalendarClient(business);
+    if (booking.googleEventId) {
+        return { googleEventId: booking.googleEventId, customerCalendarUrl };
+    }
 
-    const { data } = await calendar.events.insert({
-        calendarId: business.googleCalendarId || "primary",
-        requestBody: buildEventPayload({ business, service, booking }),
-        sendUpdates: "all"
-    });
+    const calendar = getCalendarClient(business);
+    const eventId = `servmi${booking._id}`;
+    let data;
+    try {
+        const result = await calendar.events.insert({
+            calendarId: business.googleCalendarId || "primary",
+            requestBody: { ...buildEventPayload({ business, service, booking }), id: eventId },
+            sendUpdates: "all"
+        });
+        data = result.data;
+    } catch (error) {
+        if (error.code !== 409) throw error;
+        data = { id: eventId };
+    }
 
     return {
         googleEventId: data.id,
@@ -119,7 +130,8 @@ export const updateBookingCalendarEvent = async ({ business, service, booking })
 };
 
 export const cancelBookingCalendarEvent = async ({ business, booking }) => {
-    if (!isCalendarConnected(business) || !booking.googleEventId) {
+    const eventId = booking.googleEventId || (booking.fulfillmentVersion === 1 ? `servmi${booking._id}` : "");
+    if (!isCalendarConnected(business) || !eventId) {
         return false;
     }
 
@@ -128,7 +140,7 @@ export const cancelBookingCalendarEvent = async ({ business, booking }) => {
     try {
         await calendar.events.delete({
             calendarId: business.googleCalendarId || "primary",
-            eventId: booking.googleEventId,
+            eventId,
             sendUpdates: "all"
         });
 

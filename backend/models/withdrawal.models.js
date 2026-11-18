@@ -16,6 +16,12 @@ const withdrawalSchema = new mongoose.Schema({
         min: 1
     },
 
+    requestId: {
+        type: String,
+        trim: true,
+        maxlength: 128
+    },
+
     currency: {
         type: String,
         default: "inr",
@@ -39,10 +45,24 @@ const withdrawalSchema = new mongoose.Schema({
     adminNote: {
         type: String,
         default: "",
-        trime: true
+        trim: true
+    },
+
+    transferReference: {
+        type: String,
+        default: "",
+        trim: true
     }
 
 }, { timestamps: true });
+
+withdrawalSchema.index(
+    { userId: 1, requestId: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { requestId: { $exists: true } }
+    }
+);
 
 
 
