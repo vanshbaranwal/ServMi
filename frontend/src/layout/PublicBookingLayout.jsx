@@ -1,17 +1,19 @@
 import { Outlet } from "react-router-dom"
 
 import { Brand } from "@/components/Brand"
+import { SkipLink } from "@/components/SkipLink"
 
 export default function PublicBookingLayout() {
   return (
     <div className="min-h-dvh bg-background">
+      <SkipLink />
       <header className="border-b bg-card">
         <div className="app-container flex h-16 items-center justify-between">
           <Brand />
           <span className="text-xs font-medium text-muted-foreground">Secure booking</span>
         </div>
       </header>
-      <main className="app-container py-8 sm:py-12">
+      <main id="main-content" className="app-container py-8 sm:py-12">
         <Outlet />
       </main>
       <footer className="app-container pb-8 text-center text-xs text-muted-foreground">

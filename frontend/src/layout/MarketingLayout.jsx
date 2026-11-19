@@ -1,11 +1,13 @@
 import { Link, Outlet } from "react-router-dom"
 
 import { Brand } from "@/components/Brand"
+import { SkipLink } from "@/components/SkipLink"
 import { Button } from "@/components/ui/button"
 
 export default function MarketingLayout() {
   return (
     <div className="min-h-dvh bg-background">
+      <SkipLink />
       <header className="border-b bg-background/90 backdrop-blur">
         <div className="app-container flex h-16 items-center justify-between">
           <Brand />
@@ -19,7 +21,7 @@ export default function MarketingLayout() {
           </nav>
         </div>
       </header>
-      <main>
+      <main id="main-content">
         <Outlet />
       </main>
       <footer className="border-t bg-card">

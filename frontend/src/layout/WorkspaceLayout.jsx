@@ -2,6 +2,7 @@ import { Menu } from "lucide-react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 
 import { Brand } from "@/components/Brand"
+import { SkipLink } from "@/components/SkipLink"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -54,6 +55,7 @@ export default function WorkspaceLayout({
 
   return (
     <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <SkipLink />
       <aside className="hidden border-r bg-sidebar lg:flex lg:min-h-dvh lg:flex-col">
         <div className="flex h-16 items-center border-b px-5">
           <Brand to={homeTo} />
@@ -107,7 +109,7 @@ export default function WorkspaceLayout({
             </div>
           </div>
         </header>
-        <main className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <main id="main-content" className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           <div className="mx-auto w-full max-w-6xl">
             <Outlet />
           </div>

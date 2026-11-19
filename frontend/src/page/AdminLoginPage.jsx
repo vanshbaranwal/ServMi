@@ -18,6 +18,11 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }))
+    if (error) setError("")
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setSubmitting(true)
@@ -42,10 +47,10 @@ export default function AdminLoginPage() {
     >
       <form className="space-y-5" onSubmit={handleSubmit} noValidate>
         <FormField id="admin-email" label="Admin email">
-          <Input id="admin-email" type="email" autoComplete="username" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} required className="h-10" />
+          <Input id="admin-email" type="email" autoComplete="username" value={form.email} onChange={(event) => updateField("email", event.target.value)} required className="h-10" />
         </FormField>
         <FormField id="admin-password" label="Password" error={error}>
-          <Input id="admin-password" type="password" autoComplete="current-password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} required className="h-10" />
+          <Input id="admin-password" type="password" autoComplete="current-password" value={form.password} onChange={(event) => updateField("password", event.target.value)} required className="h-10" />
         </FormField>
         <Button className="h-10 w-full" type="submit" disabled={submitting}>
           {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
