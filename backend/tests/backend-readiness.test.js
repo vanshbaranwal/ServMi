@@ -11,6 +11,7 @@ import { WalletTransaction } from "../models/walletTransaction.models.js";
 import { RateLimitBucket } from "../models/rateLimitBucket.models.js";
 import { createPublicBooking, getBookingStatus, requestPublicBookingOtp } from "../controllers/public.controller.js";
 import { registerUser, requestRegistrationOTP } from "../controllers/auth.controller.js";
+import { updatePayoutDetails } from "../controllers/payment.controller.js";
 import { receiveStripeWebhook } from "../controllers/stripeWebhook.controller.js";
 import { ensurePayoutRecorded, handleCheckoutEvent, validateCheckoutSession } from "../utils/checkoutFulfillment.utils.js";
 import { withBookingDateLock } from "../utils/bookingDateLock.utils.js";
@@ -117,6 +118,35 @@ test("Service prices follow the INR Checkout amount range", () => {
     assert.equal(isValidServicePrice(10.01), true);
     assert.equal(isValidServicePrice(10.001), false);
     assert.equal(isValidServicePrice(10_000_000), false);
+});
+
+test("Updating UPI payout details preserves an existing bank destination", async () => {
+    const original = User.findById;
+    const user = {
+        payoutDetails: {
+            accountHolderName: "Provider",
+            bankName: "Example Bank",
+            accountLast4: "4321",
+            ifsc: "EXAM0001234",
+            upiId: "old@bank",
+            isComplete: true
+        },
+        async save() { return this; }
+    };
+    User.findById = () => ({ select: async () => user });
+    try {
+        const response = await invoke(updatePayoutDetails, {
+            user: { id: objectId },
+            body: { accountHolderName: "Provider", upiId: "new@bank" }
+        });
+        assert.equal(response.statusCode, 200);
+        assert.equal(response.body.payoutDetails.upiId, "new@bank");
+        assert.equal(response.body.payoutDetails.bankName, "Example Bank");
+        assert.equal(response.body.payoutDetails.accountLast4, "4321");
+        assert.equal(response.body.payoutDetails.ifsc, "EXAM0001234");
+    } finally {
+        User.findById = original;
+    }
 });
 
 test("IP request limit returns 429 after its budget is used", async () => {

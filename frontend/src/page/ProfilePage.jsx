@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { LoaderCircle } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { FormField } from "@/components/FormField"
@@ -23,9 +23,11 @@ const toForm = (user) => ({
 export default function ProfilePage() {
   const user = useAuthStore((state) => state.providerUser)
   const updateProviderUser = useAuthStore((state) => state.updateProviderUser)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [form, setForm] = useState(() => toForm(user))
   const [loading, setLoading] = useState(!user)
   const [saving, setSaving] = useState(false)
+  const [connectingCalendar, setConnectingCalendar] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -46,6 +48,18 @@ export default function ProfilePage() {
     loadProfile()
     return () => { active = false }
   }, [updateProviderUser])
+
+  useEffect(() => {
+    const calendarStatus = searchParams.get("calendar")
+    if (!calendarStatus) return
+    if (calendarStatus === "connected") toast.success("Google Calendar connected")
+    else if (calendarStatus === "missing-refresh-token") toast.error("Google did not provide offline access. Remove ServMi from your Google account permissions and try again.")
+    else toast.error("Google Calendar could not be connected")
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete("calendar")
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const update = (event) => {
     setError("")
@@ -90,6 +104,17 @@ export default function ProfilePage() {
       toast.success("Booking link copied")
     } catch {
       toast.error("Copying is unavailable. Select the link and copy it manually.")
+    }
+  }
+
+  const connectCalendar = async () => {
+    setConnectingCalendar(true)
+    try {
+      const { data } = await api.get("/api/integrations/google/connect")
+      window.location.assign(data.url)
+    } catch (requestError) {
+      toast.error(getApiError(requestError, "We couldn't start the Google Calendar connection."))
+      setConnectingCalendar(false)
     }
   }
 
@@ -165,6 +190,30 @@ export default function ProfilePage() {
         </Card>
 
         <div className="space-y-5">
+          <Card id="calendar-connection" className="scroll-mt-24">
+            <CardHeader>
+              <div className="mb-1">
+                <Badge variant="secondary" className={user?.googleCalendarConnected ? "bg-success-surface text-success" : ""}>
+                  {user?.googleCalendarConnected ? "Connected" : "Not connected"}
+                </Badge>
+              </div>
+              <CardTitle>Google Calendar</CardTitle>
+              <CardDescription>
+                Keep confirmed, rescheduled, and cancelled appointments synchronized automatically.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {user?.googleCalendarConnected ? (
+                <p className="text-sm leading-6 text-muted-foreground">New booking changes will be applied to your primary Google Calendar.</p>
+              ) : (
+                <Button className="w-full" onClick={connectCalendar} disabled={connectingCalendar}>
+                  {connectingCalendar && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                  {connectingCalendar ? "Opening Google" : "Connect Google Calendar"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <div className="mb-1">

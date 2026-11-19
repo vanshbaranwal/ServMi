@@ -36,3 +36,8 @@ export const getInitials = (value = "") =>
 
 export const createRequestId = () =>
   globalThis.crypto?.randomUUID?.() || `servmi-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+export const formatStatus = (value = "") => {
+  const label = String(value).replaceAll("_", " ").trim()
+  return label ? `${label[0].toUpperCase()}${label.slice(1)}` : "—"
+}

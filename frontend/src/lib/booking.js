@@ -17,6 +17,29 @@ export const getBusinessToday = (timeZone = "Asia/Kolkata") => {
   }
 }
 
+export const getBusinessClock = (timeZone = "Asia/Kolkata") => {
+  const format = (zone) => new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date())
+  let parts
+  try {
+    parts = format(timeZone)
+  } catch {
+    parts = format("Asia/Kolkata")
+  }
+  const part = (type) => parts.find((entry) => entry.type === type)?.value
+  return {
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    time: `${part("hour")}:${part("minute")}`,
+  }
+}
+
 export const addCalendarDays = (dateString, amount) => {
   const date = new Date(`${dateString}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + amount)

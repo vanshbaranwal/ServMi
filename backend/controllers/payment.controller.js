@@ -73,25 +73,24 @@ export const updatePayoutDetails = async (req, res) => {
       return res.status(400).json({ message: 'Bank name, account number, and IFSC are required for bank payouts' });
     }
 
+    const user = await User.findById(req.user.id).select('payoutDetails');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const currentPayout = user.payoutDetails || {};
     const payoutDetails = {
       accountHolderName,
-      bankName,
-      accountLast4: accountNumber ? maskAccountNumber(accountNumber) : '',
-      ifsc,
+      bankName: accountNumber ? bankName : currentPayout.bankName || '',
+      accountLast4: accountNumber ? maskAccountNumber(accountNumber) : currentPayout.accountLast4 || '',
+      ifsc: accountNumber ? ifsc : currentPayout.ifsc || '',
       upiId,
       isComplete: true,
       updatedAt: new Date(),
     };
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { payoutDetails },
-      { new: true }
-    ).select('payoutDetails');
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    user.payoutDetails = payoutDetails;
+    await user.save();
 
     res.json({ message: 'Payout details saved', payoutDetails: user.payoutDetails });
   } catch (error) {
