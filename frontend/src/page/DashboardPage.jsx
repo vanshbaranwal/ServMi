@@ -52,7 +52,7 @@ export default function DashboardPage() {
   const setup = getSetupState({ user, services, availability })
   const publishedServices = services.filter((service) => service.isActive).length
   const availableDays = availability.filter((day) => day.slots?.length).length
-  const bookingUrl = user?.slug ? `${window.location.origin}/book/${user.slug}` : ""
+  const bookingUrl = user?.slug ? `${window.location.origin}/b/${user.slug}` : ""
 
   const copyLink = async () => {
     try {
@@ -81,7 +81,7 @@ export default function DashboardPage() {
           : "Complete the essentials below to start accepting bookings."}
         actions={setup.ready && user?.slug ? (
           <Button variant="outline" asChild>
-            <Link to={`/book/${user.slug}`}>View booking page</Link>
+            <Link to={`/b/${user.slug}`}>View booking page</Link>
           </Button>
         ) : null}
       />
@@ -151,7 +151,7 @@ export default function DashboardPage() {
               <Button onClick={copyLink} disabled={!setup.ready || !bookingUrl}>Copy link</Button>
               {user?.slug && (
                 <Button variant="outline" asChild>
-                  <Link to={`/book/${user.slug}`}>Preview page</Link>
+                  <Link to={`/b/${user.slug}`}>Preview page</Link>
                 </Button>
               )}
             </div>

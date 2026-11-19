@@ -6,17 +6,14 @@ import { Card, CardContent } from "@/components/ui/card"
 
 const features = [
   {
-    number: "01",
     title: "A booking page that feels like your business",
     description: "Share one clear link for services, availability, email verification, and payment.",
   },
   {
-    number: "02",
     title: "A schedule you can understand at a glance",
     description: "See upcoming work, reschedule free bookings, and keep customers informed.",
   },
   {
-    number: "03",
     title: "Payments with visible states",
     description: "Track earnings, withdrawals, refunds, and reviews without guessing what happened.",
   },
@@ -41,7 +38,7 @@ export default function HomePage() {
                 <Link to="/register">Start with ServMi</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link to="/book/demo-studio">Preview a booking page</Link>
+                <a href="#how-it-works">See how it works</a>
               </Button>
             </div>
           </div>
@@ -78,13 +75,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="app-container pb-16 sm:pb-24">
+      <section id="how-it-works" className="app-container scroll-mt-20 pb-16 sm:pb-24">
         <div className="grid gap-4 md:grid-cols-3">
           {features.map((feature) => (
-            <Card key={feature.number} className="shadow-none">
+            <Card key={feature.title} className="shadow-none">
               <CardContent className="p-6">
-                <span className="text-xs font-semibold tracking-[0.16em] text-muted-foreground">{feature.number}</span>
-                <h2 className="mt-5 text-lg font-semibold tracking-[-0.025em]">{feature.title}</h2>
+                <h2 className="text-lg font-semibold tracking-[-0.025em]">{feature.title}</h2>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">{feature.description}</p>
               </CardContent>
             </Card>

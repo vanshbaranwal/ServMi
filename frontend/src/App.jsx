@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { Navigate, Route, Routes } from "react-router-dom"
+import { Navigate, Route, Routes, useParams } from "react-router-dom"
 
 import { LoadingState } from "@/components/AsyncState"
 import { RequireAdmin, RequireProvider } from "@/components/RouteGuard"
@@ -28,6 +28,11 @@ const ProfilePage = lazy(() => import("@/page/ProfilePage"))
 const RegisterPage = lazy(() => import("@/page/RegisterPage"))
 const ServicesPage = lazy(() => import("@/page/ServicesPage"))
 
+function LegacyBookingRedirect() {
+  const { slug } = useParams()
+  return <Navigate to={`/b/${encodeURIComponent(slug || "")}`} replace />
+}
+
 export default function App() {
   const providerToken = useAuthStore((state) => state.providerToken)
   const adminToken = useAuthStore((state) => state.adminToken)
@@ -44,7 +49,8 @@ export default function App() {
         <Route path="/register" element={providerToken ? <Navigate to="/dashboard" replace /> : <RegisterPage />} />
 
         <Route element={<PublicBookingLayout />}>
-          <Route path="/book/:slug" element={<BookingPage />} />
+          <Route path="/b/:slug" element={<BookingPage />} />
+          <Route path="/book/:slug" element={<LegacyBookingRedirect />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
           <Route path="/booking/cancelled" element={<BookingCancelledPage />} />
         </Route>

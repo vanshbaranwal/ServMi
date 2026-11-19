@@ -81,7 +81,7 @@ export default function ProfilePage() {
     }
   }
 
-  const bookingUrl = user?.slug ? `${window.location.origin}/book/${user.slug}` : ""
+  const bookingUrl = user?.slug ? `${window.location.origin}/b/${user.slug}` : ""
 
   const copyLink = async () => {
     if (!bookingUrl) return
@@ -183,7 +183,7 @@ export default function ProfilePage() {
                 <Button variant="outline" onClick={copyLink} disabled={!bookingUrl}>Copy link</Button>
                 {user?.slug && (
                   <Button variant="ghost" asChild>
-                    <Link to={`/book/${user.slug}`}>View public page</Link>
+                    <Link to={`/b/${user.slug}`}>View public page</Link>
                   </Button>
                 )}
               </div>
