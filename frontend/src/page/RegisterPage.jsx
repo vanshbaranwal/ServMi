@@ -26,13 +26,19 @@ export default function RegisterPage() {
   const setSession = useAuthStore((state) => state.setProviderSession)
   const [form, setForm] = useState(initialForm)
   const [otpSent, setOtpSent] = useState(false)
+  const [otpVerified, setOtpVerified] = useState(false)
   const [sendingOtp, setSendingOtp] = useState(false)
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
 
   const update = (event) => {
     setError("")
-    if (event.target.name === "email") setOtpSent(false)
+    if (event.target.name === "email") {
+      setOtpSent(false)
+      setOtpVerified(false)
+    }
+    if (event.target.name === "emailOtp") setOtpVerified(false)
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
   }
 
@@ -46,6 +52,7 @@ export default function RegisterPage() {
     try {
       await api.post("/api/auth/register/request-otp", { email: form.email })
       setOtpSent(true)
+      setOtpVerified(false)
       toast.success("Verification code sent")
     } catch (requestError) {
       setError(getApiError(requestError, "We couldn't send the verification code."))
@@ -54,10 +61,31 @@ export default function RegisterPage() {
     }
   }
 
+  const verifyOtp = async () => {
+    if (!form.emailOtp.trim()) {
+      setError("Enter the verification code from your email.")
+      return
+    }
+    setVerifyingOtp(true)
+    setError("")
+    try {
+      await api.post("/api/auth/register/verify-otp", {
+        email: form.email,
+        emailOtp: form.emailOtp,
+      })
+      setOtpVerified(true)
+      toast.success("Email verified")
+    } catch (requestError) {
+      setError(getApiError(requestError, "We couldn't verify this code."))
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
-    if (!otpSent) {
-      setError("Send a verification code before creating your account.")
+    if (!otpVerified) {
+      setError("Verify your email before creating your account.")
       return
     }
     setSubmitting(true)
@@ -102,14 +130,19 @@ export default function RegisterPage() {
           </div>
         </FormField>
         {otpSent && (
-          <FormField id="emailOtp" label="Verification code" hint="Expires in 10 minutes">
-            <Input id="emailOtp" name="emailOtp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={form.emailOtp} onChange={update} required className="h-10 tracking-[0.3em]" />
+          <FormField id="emailOtp" label="Verification code" hint={otpVerified ? "Email verified" : "Expires in 10 minutes"}>
+            <div className="flex gap-2">
+              <Input id="emailOtp" name="emailOtp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={form.emailOtp} onChange={update} required className="h-10 tracking-[0.3em]" />
+              <Button type="button" variant="outline" className="h-10 shrink-0" onClick={verifyOtp} disabled={verifyingOtp || otpVerified}>
+                {verifyingOtp ? "Checking" : otpVerified ? "Verified" : "Verify"}
+              </Button>
+            </div>
           </FormField>
         )}
         <FormField id="password" label="Password" hint="At least 6 characters" error={error}>
           <Input id="password" name="password" type="password" autoComplete="new-password" minLength={6} value={form.password} onChange={update} required className="h-10" />
         </FormField>
-        <Button className="h-10 w-full" type="submit" disabled={submitting}>
+        <Button className="h-10 w-full" type="submit" disabled={submitting || !otpVerified}>
           {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           {submitting ? "Creating workspace" : "Create account"}
         </Button>
