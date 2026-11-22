@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/user.models.js";
-import { getGoogleAuthUrl, getGoogleTokens } from "../utils/googleCalendar.utils.js";
+import { getGoogleAuthUrl, getGoogleTokens, revokeGoogleToken } from "../utils/googleCalendar.utils.js";
 
 
 const clientRedirect = (res, status) => {
@@ -82,5 +82,36 @@ export const handleGoogleCallback = async (req, res) => {
 
     } catch (error) {
         return clientRedirect(res, "failed");
+    }
+};
+
+export const disconnectGoogleCalendar = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "user not found" });
+        }
+
+        const refreshToken = user.googleRefreshToken;
+        user.googleRefreshToken = "";
+        user.googleCalendarConnected = false;
+        user.googleCalendarId = "primary";
+        await user.save();
+
+        if (refreshToken) {
+            try {
+                await revokeGoogleToken(refreshToken);
+            } catch (error) {
+                console.warn("Google token revocation failed after local disconnect:", error.message);
+            }
+        }
+
+        return res.json({
+            success: true,
+            message: "Google Calendar disconnected",
+            calendar: { googleCalendarConnected: false, googleCalendarId: "primary" }
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: "server error", error: error.message });
     }
 };

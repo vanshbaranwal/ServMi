@@ -11,6 +11,7 @@ import { WalletTransaction } from "../models/walletTransaction.models.js";
 import { RateLimitBucket } from "../models/rateLimitBucket.models.js";
 import { createPublicBooking, getBookingStatus, requestPublicBookingOtp } from "../controllers/public.controller.js";
 import { registerUser, requestRegistrationOTP } from "../controllers/auth.controller.js";
+import { disconnectGoogleCalendar } from "../controllers/integration.controller.js";
 import { updatePayoutDetails } from "../controllers/payment.controller.js";
 import { receiveStripeWebhook } from "../controllers/stripeWebhook.controller.js";
 import { ensurePayoutRecorded, handleCheckoutEvent, validateCheckoutSession } from "../utils/checkoutFulfillment.utils.js";
@@ -20,6 +21,7 @@ import { isValidServicePrice } from "../utils/stripe.utils.js";
 import { isValidTimeRange } from "../utils/time.utils.js";
 import { formatBookingDateTime } from "../utils/bookingNotifications.utils.js";
 import { rateLimit } from "../middleware/rateLimit.middleware.js";
+import { getAllowedOrigins, getCoreConfigErrors, getIntegrationStatus, isCorsOriginAllowed } from "../config/runtime.config.js";
 
 const objectId = "507f1f77bcf86cd799439011";
 const serviceId = "507f1f77bcf86cd799439012";
@@ -67,6 +69,51 @@ test("Provider registration rejects short passwords and malformed email", async 
         body: { email: "not-an-email" }
     });
     assert.equal(badEmail.statusCode, 400);
+});
+
+test("Runtime configuration restricts production browser origins", () => {
+    const env = {
+        NODE_ENV: "production",
+        CLIENT_URL: "https://servmi.example/",
+        CORS_ORIGINS: "https://admin.servmi.example, https://servmi.example",
+        BREVO_API_KEY: "key",
+        BREVO_SENDER_EMAIL: "hello@servmi.example",
+        STRIPE_SECRET_KEY: "sk_test",
+        STRIPE_WEBHOOK_SECRET: "whsec_test"
+    };
+    assert.deepEqual(getAllowedOrigins(env), ["https://servmi.example", "https://admin.servmi.example"]);
+    assert.equal(isCorsOriginAllowed("https://servmi.example", env), true);
+    assert.equal(isCorsOriginAllowed("https://untrusted.example", env), false);
+    assert.deepEqual(getIntegrationStatus(env), {
+        email: true,
+        payments: true,
+        googleCalendar: false
+    });
+    assert.deepEqual(getCoreConfigErrors({ ...env, MONGO_URL: "mongodb://example", JWT_SECRET: "x".repeat(32) }), []);
+    assert.match(
+        getCoreConfigErrors({ NODE_ENV: "production", JWT_SECRET: "short" }).join("; "),
+        /MONGO_URL is required.*JWT_SECRET.*CLIENT_URL is required/
+    );
+});
+
+test("Provider can disconnect Google Calendar locally", async () => {
+    const original = User.findById;
+    const user = {
+        googleRefreshToken: "",
+        googleCalendarConnected: true,
+        googleCalendarId: "primary",
+        async save() { return this; }
+    };
+    User.findById = async () => user;
+    try {
+        const response = await invoke(disconnectGoogleCalendar, { user: { id: objectId } });
+        assert.equal(response.statusCode, 200);
+        assert.equal(user.googleCalendarConnected, false);
+        assert.equal(user.googleRefreshToken, "");
+        assert.equal(response.body.calendar.googleCalendarConnected, false);
+    } finally {
+        User.findById = original;
+    }
 });
 
 test("Public booking status requires an access token", async () => {

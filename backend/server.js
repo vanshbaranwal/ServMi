@@ -4,6 +4,7 @@ import "dotenv/config";
 import http from "http";
 import mongoose from "mongoose";
 import { connectDb } from "./config/db.config.js";
+import { getAllowedOrigins, getCoreConfigErrors, getIntegrationStatus, isCorsOriginAllowed } from "./config/runtime.config.js";
 import authRoutes from "./routes/auth.routes.js";
 import serviceRoutes from "./routes/service.routes.js";
 import availabilityRoutes from "./routes/availbility.routes.js";
@@ -22,18 +23,24 @@ import { RateLimitBucket } from "./models/rateLimitBucket.models.js";
 import { User } from "./models/user.models.js";
 import { Availability } from "./models/availability.models.js";
 import { Booking } from "./models/booking.models.js";
+import { getEmailConfigStatus } from "./utils/bookingNotifications.utils.js";
 
 
 const PORT = process.env.PORT || 5000;
 
 const app = express();
+const allowedOrigins = getAllowedOrigins();
 const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
 if (Number.isInteger(trustProxyHops) && trustProxyHops > 0 && trustProxyHops <= 5) {
     app.set("trust proxy", trustProxyHops);
 }
 
 // middlewares
-app.use(cors());
+app.use(cors({
+    origin(origin, callback) {
+        callback(null, isCorsOriginAllowed(origin));
+    }
+}));
 app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), receiveStripeWebhook);
 app.use(express.json());
 
@@ -42,6 +49,13 @@ app.use(express.json());
 // routes
 app.get("/", (req, res) => {
     res.send("api is working");
+});
+app.get("/api/health", (req, res) => {
+    res.json({
+        status: "ok",
+        database: mongoose.connection.readyState === 1 ? "connected" : "unavailable",
+        integrations: getIntegrationStatus()
+    });
 });
 
 app.use("/api/auth", authRoutes);
@@ -65,6 +79,22 @@ server.on("error", (error) => {
 });
 
 const start = async () => {
+    const configurationErrors = getCoreConfigErrors();
+    if (configurationErrors.length) {
+        throw new Error(`Invalid server configuration: ${configurationErrors.join("; ")}`);
+    }
+    if (!process.env.CLIENT_URL) {
+        console.warn("CLIENT_URL is not configured; browser redirects will use the local development fallback.");
+    }
+    const emailStatus = getEmailConfigStatus();
+    if (!emailStatus.configured) {
+        console.warn(`Email delivery is unavailable. Missing: ${emailStatus.missing.join(", ")}`);
+    }
+    if (Boolean(process.env.STRIPE_SECRET_KEY) !== Boolean(process.env.STRIPE_WEBHOOK_SECRET)) {
+        console.warn("Stripe is only partially configured; paid bookings remain disabled until both Stripe secrets are set.");
+    }
+    console.log(`Allowed browser origins: ${allowedOrigins.length ? allowedOrigins.join(", ") : "none configured"}`);
+
     await connectDb();
     await Promise.all([
         BookingDateLock.createIndexes(),

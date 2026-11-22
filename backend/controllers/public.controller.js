@@ -338,10 +338,11 @@ export const createPublicBooking = async (req, res) => {
 
 export const getBookingStatus = async (req, res) => {
     try {
-        const { session_id: sessionId, booking_id: bookingId, access_token: accessToken } = req.query;
+        const { session_id: sessionId, booking_id: bookingId } = req.query;
+        const accessToken = req.get?.("X-Booking-Access-Token") || req.query.access_token;
         if ((Boolean(sessionId) === Boolean(bookingId)) || !accessToken
             || (bookingId && !mongoose.isValidObjectId(bookingId))) {
-            return errorResponse(res, 400, "One booking identifier and access_token are required");
+            return errorResponse(res, 400, "One booking identifier and an access token are required");
         }
 
         const booking = await Booking.findOne(sessionId

@@ -146,6 +146,7 @@ export const requestRegistrationOTP = async(req, res) => {
         });
 
     } catch (error) {
+        console.error("Registration OTP request failed:", error.message);
         return res.status(error.statusCode === 429 ? 429 : 503).json({
             success: false,
             message: error.statusCode === 429 ? error.message : "Unable to send verification code right now"

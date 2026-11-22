@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { EmptyState, ErrorState, LoadingState } from "@/components/AsyncState"
 import { FormField } from "@/components/FormField"
 import { PageHeader } from "@/components/PageHeader"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -96,6 +97,11 @@ export default function BookingPage() {
   }, [slug])
 
   const selectedService = services.find((service) => service._id === selectedId)
+  const selectedPaidServiceUnavailable = Boolean(
+    selectedService && Number(selectedService.price) > 0 && business?.paymentsAvailable === false,
+  )
+  const hasUnavailablePaidServices = business?.paymentsAvailable === false
+    && services.some((service) => Number(service.price) > 0)
   const dateChoices = useMemo(
     () => getBookableDates(business?.timezone || "Asia/Kolkata", 21),
     [business?.timezone],
@@ -256,6 +262,13 @@ export default function BookingPage() {
         description={business?.businessDescription || "Choose the service that best fits what you need."}
       />
 
+      {hasUnavailablePaidServices && (
+        <Alert className="border-warning/30 bg-warning-surface/60">
+          <AlertTitle>Paid booking is temporarily unavailable</AlertTitle>
+          <AlertDescription>You can still book any free service. This provider is finishing payment setup for paid appointments.</AlertDescription>
+        </Alert>
+      )}
+
       {!services.length ? (
         <EmptyState
           title="No services are available yet"
@@ -271,6 +284,7 @@ export default function BookingPage() {
               <CardContent className="space-y-3">
                 {services.map((service) => {
                   const selected = service._id === selectedId
+                  const paidUnavailable = Number(service.price) > 0 && business?.paymentsAvailable === false
                   return (
                     <button
                       key={service._id}
@@ -278,9 +292,11 @@ export default function BookingPage() {
                       className={cn(
                         "block w-full rounded-xl border p-4 text-left transition-colors hover:border-strong-border",
                         selected && "border-primary bg-secondary/40 ring-2 ring-primary/30",
+                        paidUnavailable && "cursor-not-allowed opacity-60 hover:border-border",
                       )}
                       onClick={() => chooseService(service._id)}
                       aria-pressed={selected}
+                      disabled={paidUnavailable}
                     >
                       <span className="flex items-start justify-between gap-4">
                         <span>
@@ -290,8 +306,9 @@ export default function BookingPage() {
                           </span>
                           <span className="mt-2 block text-sm text-secondary-foreground">{service.duration} minutes</span>
                         </span>
-                        <span className="shrink-0 text-sm font-semibold text-accent-foreground">
-                          {Number(service.price) === 0 ? "Free" : formatPrice(service.price)}
+                        <span className="shrink-0 text-right text-sm font-semibold text-accent-foreground">
+                          <span className="block">{Number(service.price) === 0 ? "Free" : formatPrice(service.price)}</span>
+                          {paidUnavailable && <span className="mt-1 block text-xs font-medium text-warning">Unavailable</span>}
                         </span>
                       </span>
                     </button>
@@ -440,7 +457,7 @@ export default function BookingPage() {
                       />
                     </FormField>
                     {bookingError && <p className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">{bookingError}</p>}
-                    <Button className="h-10 w-full" type="submit" disabled={!otpVerified || booking}>
+                    <Button className="h-10 w-full" type="submit" disabled={!otpVerified || booking || selectedPaidServiceUnavailable}>
                       {booking && <LoaderCircle className="animate-spin" aria-hidden="true" />}
                       {booking
                         ? "Confirming booking"
@@ -449,7 +466,11 @@ export default function BookingPage() {
                           : "Confirm free booking"}
                     </Button>
                     {Number(selectedService.price) > 0 && (
-                      <p className="text-center text-sm leading-5 text-muted-foreground">You will continue to Stripe to complete the payment securely.</p>
+                      <p className="text-center text-sm leading-5 text-muted-foreground">
+                        {selectedPaidServiceUnavailable
+                          ? "Online payment is not configured for this provider yet."
+                          : "You will continue to Stripe to complete the payment securely."}
+                      </p>
                     )}
                   </form>
                 </CardContent>

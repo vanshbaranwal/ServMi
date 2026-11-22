@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, getApiError } from "@/lib/api"
 import { formatBookingDate, formatTimeRange } from "@/lib/booking"
+import { readBookingAccess, scrubBookingAccessUrl } from "@/lib/bookingAccess"
 import { formatMoney } from "@/lib/formatters"
 
 const statusCopy = (booking) => {
@@ -15,7 +16,7 @@ const statusCopy = (booking) => {
     return {
       label: "Confirmed",
       title: "Your booking is confirmed",
-      description: "The provider has been notified and a confirmation has been sent to your email.",
+      description: "Your appointment is reserved and is now visible to the provider.",
       success: true,
     }
   }
@@ -43,10 +44,7 @@ const statusCopy = (booking) => {
 export default function BookingSuccessPage() {
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const sessionId = searchParams.get("session_id")
-  const bookingId = searchParams.get("booking_id")
-  const accessToken = searchParams.get("access_token")
-  const slug = searchParams.get("slug")
+  const [{ sessionId, bookingId, accessToken, slug }] = useState(() => readBookingAccess(searchParams))
   const [booking, setBooking] = useState(location.state?.booking || null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -54,14 +52,20 @@ export default function BookingSuccessPage() {
   const invalidRequest = (!sessionId && !bookingId) || (sessionId && bookingId) || !accessToken
 
   useEffect(() => {
+    scrubBookingAccessUrl({ sessionId, bookingId, slug })
+  }, [bookingId, sessionId, slug])
+
+  useEffect(() => {
     if (invalidRequest) return undefined
     let active = true
     let timer
-    const query = new URLSearchParams({ access_token: accessToken })
+    const query = new URLSearchParams()
     if (sessionId) query.set("session_id", sessionId)
     if (bookingId) query.set("booking_id", bookingId)
 
-    api.get(`/api/public/booking/status?${query}`)
+    api.get(`/api/public/booking/status?${query}`, {
+      headers: { "X-Booking-Access-Token": accessToken },
+    })
       .then(({ data }) => {
         if (!active) return
         setBooking(data.booking)

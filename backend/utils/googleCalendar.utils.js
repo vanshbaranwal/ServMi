@@ -71,6 +71,13 @@ export const getGoogleTokens = async (code) => {
     return tokens;
 };
 
+export const revokeGoogleToken = async (refreshToken) => {
+    if (!refreshToken) return false;
+    const oauth2Client = getOAuthClient();
+    await oauth2Client.revokeToken(refreshToken);
+    return true;
+};
+
 export const createBookingCalendarEvent = async ({ business, service, booking }) => {
     const customerCalendarUrl = buildCustomerCalendarUrl({ business, service, booking });
 

@@ -7,17 +7,20 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, getApiError } from "@/lib/api"
 import { formatBookingDate, formatTimeRange } from "@/lib/booking"
+import { readBookingAccess, scrubBookingAccessUrl } from "@/lib/bookingAccess"
 
 export default function BookingCancelledPage() {
   const [searchParams] = useSearchParams()
-  const bookingId = searchParams.get("booking_id")
-  const accessToken = searchParams.get("access_token")
-  const slug = searchParams.get("slug")
+  const [{ bookingId, accessToken, slug }] = useState(() => readBookingAccess(searchParams))
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [attempt, setAttempt] = useState(0)
   const invalidRequest = !bookingId || !accessToken
+
+  useEffect(() => {
+    scrubBookingAccessUrl({ bookingId, slug })
+  }, [bookingId, slug])
 
   useEffect(() => {
     if (invalidRequest) return undefined
@@ -61,7 +64,6 @@ export default function BookingCancelledPage() {
 
   const statusQuery = new URLSearchParams({
     booking_id: bookingId,
-    access_token: accessToken,
     ...(slug ? { slug } : {}),
   })
   const attention = result?.kind === "attention"

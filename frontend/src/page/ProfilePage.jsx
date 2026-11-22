@@ -8,6 +8,17 @@ import { PageHeader } from "@/components/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { api, getApiError } from "@/lib/api"
@@ -28,6 +39,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(!user)
   const [saving, setSaving] = useState(false)
   const [connectingCalendar, setConnectingCalendar] = useState(false)
+  const [disconnectingCalendar, setDisconnectingCalendar] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -118,6 +130,19 @@ export default function ProfilePage() {
     }
   }
 
+  const disconnectCalendar = async () => {
+    setDisconnectingCalendar(true)
+    try {
+      const { data } = await api.delete("/api/integrations/google")
+      updateProviderUser({ ...user, ...data.calendar })
+      toast.success("Google Calendar disconnected")
+    } catch (requestError) {
+      toast.error(getApiError(requestError, "We couldn't disconnect Google Calendar."))
+    } finally {
+      setDisconnectingCalendar(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -204,7 +229,28 @@ export default function ProfilePage() {
             </CardHeader>
             <CardContent>
               {user?.googleCalendarConnected ? (
-                <p className="text-sm leading-6 text-muted-foreground">New booking changes will be applied to your primary Google Calendar.</p>
+                <div className="space-y-4">
+                  <p className="text-sm leading-6 text-muted-foreground">New booking changes will be applied to your primary Google Calendar.</p>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="w-full">Disconnect calendar</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Disconnect Google Calendar?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Future booking changes will stop syncing. Existing calendar events will remain in your calendar.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Keep connected</AlertDialogCancel>
+                        <AlertDialogAction onClick={disconnectCalendar} disabled={disconnectingCalendar}>
+                          {disconnectingCalendar ? "Disconnecting" : "Disconnect"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               ) : (
                 <Button className="w-full" onClick={connectCalendar} disabled={connectingCalendar}>
                   {connectingCalendar && <LoaderCircle className="animate-spin" aria-hidden="true" />}
