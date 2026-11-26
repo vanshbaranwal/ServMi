@@ -6,6 +6,10 @@ import { User } from "../models/user.models.js";
 import { WalletTransaction } from "../models/walletTransaction.models.js";
 import { Withdrawal } from "../models/withdrawal.models.js";
 import { isValidUpiId } from "../utils/payout.utils.js";
+import { getStripe } from "../utils/stripe.utils.js";
+import { createBookingRefundTransaction } from "../utils/wallet.utils.js";
+import { cancelBookingCalendarEvent } from "../utils/googleCalendar.utils.js";
+import { sendBookingNotification } from "../utils/bookingNotifications.utils.js";
 
 
 const createAdminToken = (email) => {
@@ -63,7 +67,7 @@ const getAdminSummary = async () => {
   const walletMap = sumByKey(walletTotals);
   const withdrawalMap = sumByKey(withdrawalTotals);
   const paidProviderPayouts = bookingSummary.paidProviderPayouts || 0;
-  const walletEarned = walletMap.booking_payout || 0;
+  const walletEarned = (walletMap.booking_payout || 0) - (walletMap.booking_refund || 0);
   const heldWithdrawals = (walletMap.withdrawal_hold || 0) + (walletMap.withdrawl_hold || 0);
   const reversedWithdrawals = (walletMap.withdrawal_reversal || 0) + (walletMap.withdrawl_reversal || 0);
   const pendingWithdrawals = (withdrawalMap.pending || 0) + (withdrawalMap.processing || 0);
@@ -170,6 +174,96 @@ export const getAdminDashboard = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+export const reconcilePaymentReview = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid booking identifier' });
+    }
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!booking.paymentReviewRequired) {
+      return res.json({ message: 'Payment review is already resolved', booking });
+    }
+    if (!booking.stripePaymentIntentId) {
+      return res.status(409).json({ message: 'This review has no Stripe payment intent to reconcile' });
+    }
+
+    const stripe = getStripe();
+    if (!stripe) return res.status(503).json({ message: 'Stripe is not configured' });
+    const [paymentIntent, refunds] = await Promise.all([
+      stripe.paymentIntents.retrieve(booking.stripePaymentIntentId),
+      stripe.refunds.list({ payment_intent: booking.stripePaymentIntentId, limit: 100 }),
+    ]);
+    const succeededRefunds = refunds.data.filter((refund) => refund.status === 'succeeded');
+    const refundedAmount = succeededRefunds.reduce((sum, refund) => sum + Number(refund.amount || 0), 0);
+
+    if (refundedAmount >= booking.amount) {
+      await createBookingRefundTransaction({ booking });
+      const primaryRefund = succeededRefunds.find((refund) => refund.id === booking.stripeRefundId) || succeededRefunds[0];
+      const resolved = await Booking.findOneAndUpdate(
+        { _id: booking._id, paymentReviewRequired: true },
+        { $set: {
+          status: 'cancelled', paymentStatus: 'refunded', payoutStatus: 'not_required',
+          stripeRefundId: primaryRefund?.id || booking.stripeRefundId,
+          paymentReviewRequired: false, paymentReviewReason: '',
+        } },
+        { new: true }
+      ).populate('serviceId', 'name duration price');
+      await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+
+      const business = await User.findById(booking.userId);
+      if (business && resolved) {
+        try { await cancelBookingCalendarEvent({ business, booking: resolved }); } catch (error) {
+          console.error('Reconciled refund calendar cleanup failed:', error.message);
+        }
+        if (resolved.serviceId) {
+          sendBookingNotification({ business, service: resolved.serviceId, booking: resolved, type: 'cancelled' })
+            .catch((error) => console.error('Reconciled refund email failed:', error.message));
+        }
+      }
+      return res.json({ message: 'Full refund reconciled and provider wallet adjusted', booking: resolved });
+    }
+
+    const chargeId = typeof paymentIntent.latest_charge === 'string'
+      ? paymentIntent.latest_charge
+      : paymentIntent.latest_charge?.id;
+    const disputes = chargeId ? await stripe.disputes.list({ charge: chargeId, limit: 100 }) : { data: [] };
+    const activeDisputes = disputes.data.filter((dispute) => !['won', 'lost'].includes(dispute.status));
+    const lostDispute = disputes.data.find((dispute) => dispute.status === 'lost');
+    if (lostDispute) {
+      await createBookingRefundTransaction({ booking, description: 'Provider payout reversed after lost Stripe dispute' });
+      const resolved = await Booking.findOneAndUpdate(
+        { _id: booking._id, paymentReviewRequired: true },
+        { $set: {
+          status: 'cancelled', paymentStatus: 'refunded', payoutStatus: 'not_required',
+          paymentReviewRequired: false, paymentReviewReason: '',
+        } },
+        { new: true }
+      );
+      await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+      return res.json({ message: 'Lost dispute reconciled and provider wallet adjusted', booking: resolved });
+    }
+    if (disputes.data.length > 0 && activeDisputes.length === 0 && disputes.data.every((dispute) => dispute.status === 'won')) {
+      const resolved = await Booking.findOneAndUpdate(
+        { _id: booking._id, paymentReviewRequired: true },
+        { $set: { paymentReviewRequired: false, paymentReviewReason: '' } },
+        { new: true }
+      );
+      await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+      return res.json({ message: 'Won dispute verified and review cleared', booking: resolved });
+    }
+
+    return res.status(409).json({
+      message: refundedAmount > 0
+        ? 'Stripe shows only a partial refund. Complete or correct it in Stripe before reconciling.'
+        : 'Stripe does not show a completed refund or closed dispute yet.'
+    });
+  } catch (error) {
+    console.error('Payment review reconciliation failed:', error);
+    return res.status(503).json({ message: 'Unable to reconcile this payment with Stripe right now' });
   }
 };
 

@@ -17,8 +17,8 @@ const isValidTimezone = (value) => {
 const isValidAccent = (value) => typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
 
 
-const createToken = (userId) => {
-    return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+const createToken = (userId, authVersion = 0) => {
+    return jwt.sign({ userId, authVersion: Number(authVersion || 0) }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
 const toUserResponse = (user) => ({
@@ -99,7 +99,7 @@ export const registerUser = async(req, res) => {
             timezone: timezone || "Asia/Kolkata"
         });
 
-        const token = createToken(user._id);
+        const token = createToken(user._id, user.authVersion);
 
         res.status(200).json({
             success: true,
@@ -216,7 +216,7 @@ export const loginUser = async(req, res) => {
         }
         
         const normalizedEmail = email.toLowerCase().trim();
-        const user = await User.findOne({ email: normalizedEmail });
+        const user = await User.findOne({ email: normalizedEmail }).select("+authVersion");
 
         if(!user){
             return res.status(401).json({
@@ -233,7 +233,7 @@ export const loginUser = async(req, res) => {
             });
         }
 
-        const token = createToken(user._id);
+        const token = createToken(user._id, user.authVersion);
 
         res.json({
             message: "logged inn successfully",
@@ -313,5 +313,74 @@ export const updateProfile = async(req, res) => {
             message: "server error",
             error: error.message
         });
+    }
+};
+
+export const requestPasswordResetOTP = async (req, res) => {
+    try {
+        const normalizedEmail = typeof req.body?.email === "string"
+            ? req.body.email.toLowerCase().trim()
+            : "";
+        if (!isValidEmail(normalizedEmail)) {
+            return res.status(400).json({ success: false, message: "valid email is required" });
+        }
+
+        const user = await User.exists({ email: normalizedEmail });
+        if (user) {
+            await requestEmailOtp({ email: normalizedEmail, purpose: "password_reset" });
+        }
+
+        return res.json({
+            success: true,
+            message: "If an account exists for that email, a reset code has been sent."
+        });
+    } catch (error) {
+        console.error("Password reset OTP request failed:", error.message);
+        return res.status(error.statusCode === 429 ? 429 : 503).json({
+            success: false,
+            message: error.statusCode === 429 ? error.message : "Unable to send a reset code right now"
+        });
+    }
+};
+
+export const resetPassword = async (req, res) => {
+    try {
+        const normalizedEmail = typeof req.body?.email === "string"
+            ? req.body.email.toLowerCase().trim()
+            : "";
+        const { emailOtp, password } = req.body || {};
+        if (!isValidEmail(normalizedEmail) || !emailOtp || typeof password !== "string" || password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "email, verification code, and a password of at least 6 characters are required"
+            });
+        }
+
+        const user = await User.findOne({ email: normalizedEmail }).select("+authVersion");
+        if (!user) {
+            return res.status(400).json({ success: false, message: "Invalid or expired verification code" });
+        }
+
+        const otpResult = await verifyEmailOtp({
+            email: normalizedEmail,
+            purpose: "password_reset",
+            code: emailOtp,
+            consume: true
+        });
+        if (!otpResult.verified) {
+            return res.status(400).json({
+                success: false,
+                message: otpResult.reason || "Invalid or expired verification code"
+            });
+        }
+
+        user.password = await bcrypt.hash(password, 10);
+        user.authVersion = Number(user.authVersion || 0) + 1;
+        await user.save();
+
+        return res.json({ success: true, message: "Password reset successfully. You can now sign in." });
+    } catch (error) {
+        console.error("Password reset failed:", error.message);
+        return res.status(500).json({ success: false, message: "Unable to reset password right now" });
     }
 };

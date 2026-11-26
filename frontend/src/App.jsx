@@ -16,11 +16,13 @@ const AdminPaymentReviewsPage = lazy(() => import("@/page/AdminPaymentReviewsPag
 const AdminWithdrawalsPage = lazy(() => import("@/page/AdminWithdrawalsPage"))
 const AvailabilityPage = lazy(() => import("@/page/AvailabilityPage"))
 const BookingCancelledPage = lazy(() => import("@/page/BookingCancelledPage"))
+const BookingManagePage = lazy(() => import("@/page/BookingManagePage"))
 const BookingPage = lazy(() => import("@/page/BookingPage"))
 const BookingSuccessPage = lazy(() => import("@/page/BookingSuccessPage"))
 const BookingsPage = lazy(() => import("@/page/BookingsPage"))
 const DashboardPage = lazy(() => import("@/page/DashboardPage"))
 const HomePage = lazy(() => import("@/page/HomePage"))
+const ForgotPasswordPage = lazy(() => import("@/page/ForgotPasswordPage"))
 const LoginPage = lazy(() => import("@/page/LoginPage"))
 const NotFoundPage = lazy(() => import("@/page/NotFoundPage"))
 const PaymentsPage = lazy(() => import("@/page/PaymentsPage"))
@@ -46,6 +48,7 @@ export default function App() {
         </Route>
 
         <Route path="/login" element={providerToken ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+        <Route path="/forgot-password" element={providerToken ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />} />
         <Route path="/register" element={providerToken ? <Navigate to="/dashboard" replace /> : <RegisterPage />} />
 
         <Route element={<PublicBookingLayout />}>
@@ -53,6 +56,7 @@ export default function App() {
           <Route path="/book/:slug" element={<LegacyBookingRedirect />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
           <Route path="/booking/cancelled" element={<BookingCancelledPage />} />
+          <Route path="/booking/manage" element={<BookingManagePage />} />
         </Route>
 
         <Route element={<RequireProvider />}>

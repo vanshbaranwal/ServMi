@@ -53,6 +53,9 @@ export default function LoginPage() {
         <FormField id="password" label="Password" error={error}>
           <Input id="password" name="password" type="password" autoComplete="current-password" value={form.password} onChange={update} required className="h-10" />
         </FormField>
+        <div className="-mt-3 text-right">
+          <Link to="/forgot-password" className="text-sm font-medium text-accent-foreground underline-offset-4 hover:underline">Forgot password?</Link>
+        </div>
         <Button className="h-10 w-full" type="submit" disabled={submitting}>
           {submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           {submitting ? "Signing in" : "Sign in"}

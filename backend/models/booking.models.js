@@ -161,6 +161,9 @@ const bookingSchema = new mongoose.Schema({
         default: false
     },
 
+    reminderSentAt: Date,
+    reminderLeaseUntil: Date,
+
     isRescheduled: {
         type: Boolean,
         default: false

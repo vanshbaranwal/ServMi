@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
+import { LoaderCircle } from "lucide-react"
+import { toast } from "sonner"
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/AsyncState"
 import { PageHeader } from "@/components/PageHeader"
@@ -7,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatDate, formatMoney, formatStatus } from "@/lib/formatters"
+import { api, getApiError } from "@/lib/api"
 import { useAdminDashboardStore } from "@/store/useAdminDashboardStore"
 
 const filters = ["all", "refund_pending", "refund_failed", "paid"]
@@ -24,6 +27,7 @@ export default function AdminPaymentReviewsPage() {
   const error = useAdminDashboardStore((state) => state.error)
   const loadDashboard = useAdminDashboardStore((state) => state.loadDashboard)
   const [activeFilter, setActiveFilter] = useState("all")
+  const [reconcilingId, setReconcilingId] = useState("")
 
   useEffect(() => {
     loadDashboard()
@@ -32,6 +36,19 @@ export default function AdminPaymentReviewsPage() {
   const visibleReviews = useMemo(() => paymentReviews.filter((booking) => (
     activeFilter === "all" || booking.paymentStatus === activeFilter
   )), [activeFilter, paymentReviews])
+
+  const reconcile = async (booking) => {
+    setReconcilingId(booking._id)
+    try {
+      const { data } = await api.post(`/api/admin/payment-reviews/${booking._id}/reconcile`)
+      toast.success(data.message)
+      await loadDashboard()
+    } catch (requestError) {
+      toast.error(getApiError(requestError, "We couldn't reconcile this review."))
+    } finally {
+      setReconcilingId("")
+    }
+  }
 
   if (loading && !paymentReviews.length) return <LoadingState label="Loading payment reviews" rows={5} />
   if (error && !paymentReviews.length) return <ErrorState message={error} onRetry={loadDashboard} />
@@ -46,9 +63,9 @@ export default function AdminPaymentReviewsPage() {
       />
 
       <Alert className="border-warning/30 bg-warning-surface/60">
-        <AlertTitle>Review-only workspace</AlertTitle>
+        <AlertTitle>Stripe-verified reconciliation</AlertTitle>
         <AlertDescription>
-          ServMi does not expose a manual resolution action yet. Resolve the refund or payment issue through the existing Stripe and backend reconciliation flow; affected provider withdrawals remain paused meanwhile.
+          Reconciliation checks Stripe before changing a booking or provider wallet. Incomplete and partial refunds remain blocked so balances cannot be cleared by mistake.
         </AlertDescription>
       </Alert>
 
@@ -127,6 +144,10 @@ export default function AdminPaymentReviewsPage() {
                         <dd className="max-w-44 break-all text-right font-medium text-foreground">{booking.stripeRefundId || "Not recorded"}</dd>
                       </div>
                     </dl>
+                    <Button className="mt-4 w-full" size="sm" onClick={() => reconcile(booking)} disabled={Boolean(reconcilingId)}>
+                      {reconcilingId === booking._id && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                      {reconcilingId === booking._id ? "Checking Stripe" : "Reconcile with Stripe"}
+                    </Button>
                   </div>
                 </div>
               </CardContent>

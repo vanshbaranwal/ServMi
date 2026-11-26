@@ -1,5 +1,5 @@
 import express from "express";
-import { cancelPublicBookingPayment, createPublicBooking, getBookingStatus, getPublicBusiness, getPublicSlots, requestPublicBookingOtp, verifyPublicBookingOtp } from "../controllers/public.controller.js";
+import { cancelPublicBooking, cancelPublicBookingPayment, createPublicBooking, getBookingStatus, getPublicBusiness, getPublicSlots, requestPublicBookingOtp, verifyPublicBookingOtp } from "../controllers/public.controller.js";
 import { rateLimit } from "../middleware/rateLimit.middleware.js";
 
 
@@ -9,6 +9,7 @@ const router = express.Router();
 
 router.get("/booking/status", getBookingStatus);
 router.post("/booking/cancel-payment", cancelPublicBookingPayment);
+router.post("/booking/cancel", rateLimit({ scope: "booking-cancel", limit: 20, windowMs: 15 * 60 * 1000 }), cancelPublicBooking);
 router.get("/:slug", getPublicBusiness);
 router.get("/:slug/slots", getPublicSlots);
 router.post("/:slug/request-otp", rateLimit({ scope: "booking-otp", limit: 100, windowMs: 15 * 60 * 1000 }), requestPublicBookingOtp);

@@ -120,6 +120,12 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0,
         select: false
+    },
+
+    authVersion: {
+        type: Number,
+        default: 0,
+        select: false
     }
     
 }, { timestamps: true });

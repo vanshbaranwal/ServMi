@@ -52,6 +52,23 @@ const canChangeFreeBooking = (booking, clock) => (
   && !booking.stripeSessionId
 )
 
+const canRescheduleBooking = (booking, clock) => (
+  !isBeforeClock(booking, clock)
+  && booking.status === "confirmed"
+  && !booking.paymentReviewRequired
+  && (canChangeFreeBooking(booking, clock)
+    || (booking.paymentStatus === "paid" && Number(booking.amount || 0) > 0 && Boolean(booking.stripeSessionId)))
+)
+
+const canCancelBooking = (booking, clock) => (
+  canChangeFreeBooking(booking, clock)
+  || (!isBeforeClock(booking, clock)
+    && booking.status === "confirmed"
+    && booking.paymentStatus === "paid"
+    && Number(booking.amount || 0) > 0
+    && !booking.paymentReviewRequired)
+)
+
 export default function BookingsPage() {
   const user = useAuthStore((state) => state.providerUser)
   const [bookings, setBookings] = useState([])
@@ -179,7 +196,8 @@ export default function BookingsPage() {
         <div className="space-y-3">
           {visibleBookings.map((booking) => {
             const service = typeof booking.serviceId === "object" ? booking.serviceId : null
-            const canChange = canChangeFreeBooking(booking, clock)
+            const canCancel = canCancelBooking(booking, clock)
+            const canReschedule = canRescheduleBooking(booking, clock)
             const paid = booking.paymentStatus !== "not_required" || Number(booking.amount || 0) > 0
             return (
               <Card key={booking._id}>
@@ -225,14 +243,10 @@ export default function BookingsPage() {
                           <a href={booking.customerCalendarUrl} target="_blank" rel="noreferrer">Customer calendar link</a>
                         </Button>
                       )}
-                      {canChange && (
-                        <>
-                          <Button variant="outline" onClick={() => setRescheduling(booking)}>Reschedule</Button>
-                          <Button variant="ghost" className="text-destructive" onClick={() => setCancelling(booking)}>Cancel</Button>
-                        </>
-                      )}
-                      {!canChange && booking.status === "confirmed" && paid && (
-                        <p className="w-full text-sm leading-5 text-muted-foreground">Paid bookings require the refund workflow before cancellation.</p>
+                      {canReschedule && <Button variant="outline" onClick={() => setRescheduling(booking)}>Reschedule</Button>}
+                      {canCancel && <Button variant="ghost" className="text-destructive" onClick={() => setCancelling(booking)}>Cancel</Button>}
+                      {!canCancel && booking.status === "confirmed" && paid && (
+                        <p className="w-full text-sm leading-5 text-muted-foreground">This booking cannot change while its payment is under review.</p>
                       )}
                     </div>
                   </div>
@@ -259,7 +273,9 @@ export default function BookingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel this booking?</AlertDialogTitle>
             <AlertDialogDescription>
-              {cancelling?.customerName} will be notified, and the time will become available for another client.
+              {cancelling?.paymentStatus === "paid"
+                ? `${cancelling?.customerName} will be notified and Stripe will receive a full refund request. The affected payout stays locked until the refund settles.`
+                : `${cancelling?.customerName} will be notified, and the time will become available for another client.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

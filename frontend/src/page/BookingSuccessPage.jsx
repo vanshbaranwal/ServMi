@@ -146,6 +146,11 @@ export default function BookingSuccessPage() {
             </Button>
           )}
           {!copy.success && <Button onClick={retry} disabled={loading}>{loading ? "Checking" : "Refresh status"}</Button>}
+          {booking?._id && accessToken && (
+            <Button variant="outline" asChild>
+              <Link to={`/booking/manage?booking_id=${encodeURIComponent(booking._id)}&access_token=${encodeURIComponent(accessToken)}${slug ? `&slug=${encodeURIComponent(slug)}` : ""}`}>Manage booking</Link>
+            </Button>
+          )}
           <Button variant="outline" asChild>
             <Link to={slug ? `/b/${slug}` : "/"}>{slug ? "Return to booking page" : "Return to ServMi"}</Link>
           </Button>

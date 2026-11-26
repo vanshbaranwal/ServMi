@@ -1,4 +1,5 @@
 import https from "https";
+import { getBookingManageUrl } from "./bookingAccess.utils.js";
 
 
 const BREVO_TRANSACTIONAL_EMAIL_URL = "https://api.brevo.com/v3/smtp/email";
@@ -113,6 +114,7 @@ const buildSubject = (type, businessName, recipientType) => {
     return `New booking received: ${businessName}`;
   }
 
+  if (type === 'reminder') return `Reminder: your booking with ${businessName} is coming up`;
   if (type === 'rescheduled') return `Your booking with ${businessName} was rescheduled`;
   if (type === 'cancelled') return `Your booking with ${businessName} was cancelled`;
   if (type === 'status') return `Your booking with ${businessName} was updated`;
@@ -127,13 +129,14 @@ const buildIntro = ({ type, serviceName, recipientType }) => {
     return `You received a new ${serviceName} booking.`;
   }
 
+  if (type === 'reminder') return `A reminder that your ${serviceName} booking is coming up.`;
   if (type === 'rescheduled') return `Your ${serviceName} booking has been rescheduled.`;
   if (type === 'cancelled') return `Your ${serviceName} booking has been cancelled.`;
   if (type === 'status') return `Your ${serviceName} booking was updated.`;
   return `Your ${serviceName} booking is confirmed.`;
 };
 
-const buildCompanyEmailHtml = ({ title, eyebrow = 'ServMi', intro, rows, accent = '#FF9DCE', notes, calendarUrl, footer }) => {
+const buildCompanyEmailHtml = ({ title, eyebrow = 'ServMi', intro, rows, accent = '#FF9DCE', notes, calendarUrl, manageUrl, footer }) => {
   const safeAccent = /^#[0-9a-f]{6}$/i.test(accent) ? accent : '#FF9DCE';
   const detailRows = rows
     .filter((row) => row.value !== undefined && row.value !== null && row.value !== '')
@@ -170,6 +173,7 @@ const buildCompanyEmailHtml = ({ title, eyebrow = 'ServMi', intro, rows, accent 
                     </table>
                     ${notes ? `<div style="margin:24px 0 0; padding:16px 18px; background:#FFF4F9; border:1px solid #EADDE4; border-radius:14px; color:#493740; font-size:14px; line-height:1.6;"><strong style="color:#552B41;">Notes:</strong> ${escapeHtml(notes)}</div>` : ''}
                     ${calendarUrl ? `<p style="margin:28px 0 0; text-align:center;"><a href="${escapeHtml(calendarUrl)}" style="display:inline-block; background:#FF9DCE; color:#552B41; text-decoration:none; padding:14px 28px; border-radius:14px; font-size:14px; font-weight:700; letter-spacing:0.3px;">Add to Google Calendar</a></p>` : ''}
+                    ${manageUrl ? `<p style="margin:14px 0 0; text-align:center;"><a href="${escapeHtml(manageUrl)}" style="display:inline-block; color:#552B41; text-decoration:underline; padding:10px 18px; font-size:14px; font-weight:700;">View or manage booking</a></p>` : ''}
                     <p style="margin:28px 0 0; color:#75666E; font-size:13px; line-height:1.6;">${escapeHtml(footer)}</p>
                   </td>
                 </tr>
@@ -248,9 +252,12 @@ const buildBookingMessage = ({ business, service, booking, type, recipientType }
   const bookingStatus = String(booking.status || '').replace('_', ' ');
   const paymentStatus = String(booking.paymentStatus || 'not_required').replace('_', ' ');
   const amount = formatMoney(booking.amount || 0, booking.currency || 'inr');
+  const manageUrl = recipientType === 'customer' ? getBookingManageUrl(booking, business.slug) : '';
   const intro = buildIntro({ type, serviceName, recipientType });
   const subject = buildSubject(type, businessName, recipientType);
-  const title = recipientType === 'provider' ? 'Booking update' : 'Booking confirmation';
+  const title = recipientType === 'provider'
+    ? 'Booking update'
+    : type === 'reminder' ? 'Upcoming booking reminder' : 'Booking confirmation';
 
   const rows = [
     { label: 'Business', value: businessName },
@@ -270,6 +277,7 @@ const buildBookingMessage = ({ business, service, booking, type, recipientType }
     ...rows.map((row) => `${row.label}: ${row.value}`),
     booking.notes ? `Notes: ${booking.notes}` : '',
     booking.customerCalendarUrl ? `Calendar link: ${booking.customerCalendarUrl}` : '',
+    manageUrl ? `Manage booking: ${manageUrl}` : '',
     '',
     recipientType === 'provider'
       ? 'This notification was sent by ServMi.'
@@ -284,6 +292,7 @@ const buildBookingMessage = ({ business, service, booking, type, recipientType }
     accent: '#FF9DCE',
     notes: booking.notes,
     calendarUrl: recipientType === 'customer' ? booking.customerCalendarUrl : '',
+    manageUrl,
     footer: recipientType === 'provider'
       ? 'This notification was sent by ServMi because a customer booked through your booking page.'
       : `Thank you for booking with ${businessName}. Please keep this email for your records.`,
@@ -336,7 +345,11 @@ export const sendBookingNotification = async ({ business, service, booking, type
 };
 
 export const sendOtpNotification = async ({ email, code, purpose }) => {
-  const title = purpose === 'registration' ? 'Verify your ServMi account' : 'Verify your booking email';
+  const title = purpose === 'registration'
+    ? 'Verify your ServMi account'
+    : purpose === 'password_reset'
+      ? 'Reset your ServMi password'
+      : 'Verify your booking email';
   const intro = `Use this verification code to continue. The code expires in 10 minutes.`;
   const htmlContent = buildCompanyEmailHtml({
     title,

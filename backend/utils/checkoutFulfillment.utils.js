@@ -4,7 +4,7 @@ import { User } from "../models/user.models.js";
 import { cancelBookingCalendarEvent, createBookingCalendarEvent } from "./googleCalendar.utils.js";
 import { getEmailConfigStatus, sendBookingNotification } from "./bookingNotifications.utils.js";
 import { timeOverlap } from "./overlap.utils.js";
-import { createBookingPayoutTransaction } from "./wallet.utils.js";
+import { createBookingPayoutTransaction, createBookingRefundTransaction } from "./wallet.utils.js";
 import { withBookingDateLock } from "./bookingDateLock.utils.js";
 import mongoose from "mongoose";
 import { getStripe } from "./stripe.utils.js";
@@ -79,9 +79,88 @@ const refundUnfulfillablePayment = async ({ booking, session, stripe }) => {
         : "refund_pending";
     await Booking.updateOne(
         { _id: booking._id, paymentStatus: "refund_pending" },
-        { $set: { paymentStatus, stripeRefundId: refund.id, stripePaymentIntentId: paymentIntent } }
+        { $set: {
+            paymentStatus, stripeRefundId: refund.id, stripePaymentIntentId: paymentIntent,
+            ...(paymentStatus === "refunded" ? { payoutStatus: "not_required", paymentReviewRequired: false, paymentReviewReason: "" } : {})
+        } }
     );
+    if (paymentStatus === "refunded") {
+        await createBookingRefundTransaction({ booking });
+        await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+    }
     return Booking.findById(booking._id);
+};
+
+export const requestBookingRefund = async ({ booking, reason = "booking_cancelled" }) => {
+    const stripe = getStripe();
+    if (!stripe) throw Object.assign(new Error("Payments are not configured"), { statusCode: 503 });
+    if (booking.status !== "confirmed" || booking.paymentStatus !== "paid"
+        || booking.paymentReviewRequired || !booking.stripePaymentIntentId) {
+        throw Object.assign(new Error("This paid booking cannot be refunded in its current state"), { statusCode: 409 });
+    }
+
+    const claimed = await Booking.findOneAndUpdate(
+        {
+            _id: booking._id,
+            status: "confirmed",
+            paymentStatus: "paid",
+            paymentReviewRequired: { $ne: true },
+            stripePaymentIntentId: booking.stripePaymentIntentId
+        },
+        { $set: {
+            status: "cancelled",
+            paymentStatus: "refund_pending",
+            paymentReviewRequired: true,
+            paymentReviewReason: reason
+        } },
+        { new: true }
+    );
+    if (!claimed) throw Object.assign(new Error("Booking changed. Refresh and try again."), { statusCode: 409 });
+    await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+
+    let refund;
+    try {
+        if (claimed.stripeRefundId) {
+            refund = await stripe.refunds.retrieve(claimed.stripeRefundId);
+        } else {
+            const existing = await stripe.refunds.list({ payment_intent: claimed.stripePaymentIntentId, limit: 100 });
+            refund = existing.data.find((candidate) => candidate.metadata?.bookingId === String(claimed._id));
+            if (!refund) {
+                refund = await stripe.refunds.create({
+                    payment_intent: claimed.stripePaymentIntentId,
+                    metadata: { bookingId: String(claimed._id), reason }
+                }, { idempotencyKey: `booking-cancellation-refund-${claimed._id}` });
+            }
+        }
+    } catch (error) {
+        await Booking.updateOne(
+            { _id: claimed._id, status: "cancelled", paymentStatus: "refund_pending", stripeRefundId: "" },
+            { $set: {
+                status: "confirmed", paymentStatus: "paid",
+                paymentReviewRequired: false, paymentReviewReason: ""
+            } }
+        );
+        await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+        throw error;
+    }
+
+    const paymentStatus = refund.status === "succeeded" ? "refunded"
+        : ["failed", "canceled"].includes(refund.status) ? "refund_failed"
+        : "refund_pending";
+    if (paymentStatus === "refunded") await createBookingRefundTransaction({ booking: claimed });
+    const updated = await Booking.findOneAndUpdate(
+        { _id: claimed._id, paymentStatus: "refund_pending" },
+        { $set: {
+            paymentStatus,
+            stripeRefundId: refund.id,
+            payoutStatus: paymentStatus === "refunded" ? "not_required" : claimed.payoutStatus,
+            paymentReviewRequired: paymentStatus !== "refunded",
+            paymentReviewReason: paymentStatus === "refunded" ? "" : reason
+        } },
+        { new: true }
+    );
+    await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
+    return updated || Booking.findById(claimed._id);
 };
 
 export const ensurePayoutRecorded = async (booking) => {
@@ -148,7 +227,7 @@ const syncBookingCalendar = async ({ booking, business, service }) => {
         }
     } catch (error) {
         console.error(`Booking ${booking._id} calendar creation failed:`, error);
-        const current = await Booking.findById(claimed._id);
+        const current = await Booking.findById(claimed._id).select("+accessTokenHash");
         if (current?.status === "cancelled") {
             try {
                 await cancelBookingCalendarEvent({ business, booking: current });
@@ -371,10 +450,17 @@ export const handleCheckoutEvent = async ({ event, stripe }) => {
             const paymentStatus = refund.status === "succeeded" ? "refunded"
                 : ["failed", "canceled"].includes(refund.status) ? "refund_failed"
                 : "refund_pending";
+            if (paymentStatus === "refunded") await createBookingRefundTransaction({ booking });
             await Booking.updateOne(
                 { _id: booking._id, paymentStatus: "refund_pending" },
-                { $set: { paymentStatus, stripeRefundId: refund.id } }
+                { $set: {
+                    paymentStatus, stripeRefundId: refund.id,
+                    ...(paymentStatus === "refunded" ? {
+                        payoutStatus: "not_required", paymentReviewRequired: false, paymentReviewReason: ""
+                    } : {})
+                } }
             );
+            await User.updateOne({ _id: booking.userId }, { $inc: { walletVersion: 1 } });
         } else if (booking.stripeRefundId !== refund.id) {
             await markPaymentReview(booking, "external_refund");
         }

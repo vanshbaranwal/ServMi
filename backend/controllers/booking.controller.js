@@ -8,6 +8,7 @@ import { sendBookingNotification } from '../utils/bookingNotifications.utils.js'
 import { withBookingDateLock } from '../utils/bookingDateLock.utils.js';
 import { timeOverlap } from '../utils/overlap.utils.js';
 import { getDayOfWeek, isValidTimeRange, timeToMinutes } from '../utils/time.utils.js';
+import { requestBookingRefund } from '../utils/checkoutFulfillment.utils.js';
 
 const canChangeFreeBooking = (booking) => (
   ['pending', 'confirmed'].includes(booking.status)
@@ -15,6 +16,15 @@ const canChangeFreeBooking = (booking) => (
   && Number(booking.amount || 0) === 0
   && booking.payoutStatus === 'not_required'
   && !booking.stripeSessionId
+);
+
+const canRescheduleBooking = (booking) => (
+  booking.status === 'confirmed'
+  && !booking.paymentReviewRequired
+  && (
+    canChangeFreeBooking(booking)
+    || (booking.paymentStatus === 'paid' && Number(booking.amount || 0) > 0 && Boolean(booking.stripeSessionId))
+  )
 );
 
 const isValidDate = (value) => {
@@ -120,13 +130,19 @@ export const updateBookingStatus = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    if (!canChangeFreeBooking(currentBooking)) {
-      return res.status(409).json({
-        message: 'Only pending or confirmed free bookings can be cancelled. Paid bookings require a refund and wallet reversal flow.',
-      });
+    const isPaidBooking = currentBooking.status === 'confirmed'
+      && currentBooking.paymentStatus === 'paid'
+      && Number(currentBooking.amount || 0) > 0;
+    if (!canChangeFreeBooking(currentBooking) && !isPaidBooking) {
+      return res.status(409).json({ message: 'This booking cannot be cancelled in its current state.' });
     }
 
-    const booking = await Booking.findOneAndUpdate(
+    let booking;
+    if (isPaidBooking) {
+      booking = await requestBookingRefund({ booking: currentBooking, reason: 'provider_cancelled' });
+      booking = await booking.populate('serviceId', 'name duration price');
+    } else {
+      booking = await Booking.findOneAndUpdate(
       {
         _id: currentBooking._id,
         userId: req.user.id,
@@ -139,6 +155,7 @@ export const updateBookingStatus = async (req, res) => {
       { $set: { status: 'cancelled' } },
       { new: true }
     ).populate('serviceId', 'name duration price');
+    }
 
     if (!booking) {
       return res.status(409).json({ message: 'Booking changed. Refresh and try again.' });
@@ -166,7 +183,7 @@ export const updateBookingStatus = async (req, res) => {
 
     res.json({ message: 'Booking updated', booking, email: emailResult });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(error.statusCode || 500).json({ message: error.statusCode ? error.message : 'Server error' });
   }
 };
 
@@ -192,9 +209,9 @@ export const rescheduleBooking = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    if (!canChangeFreeBooking(booking)) {
+    if (!canRescheduleBooking(booking)) {
       return res.status(409).json({
-        message: 'Only pending or confirmed free bookings can be rescheduled. Paid bookings require a payment handling flow.',
+        message: 'This booking cannot be rescheduled while its payment or booking status is under review.',
       });
     }
 
@@ -265,16 +282,20 @@ export const rescheduleBooking = async (req, res) => {
             _id: booking._id,
             userId: req.user.id,
             status: booking.status,
-            paymentStatus: 'not_required',
-            amount: 0,
-            payoutStatus: 'not_required',
-            stripeSessionId: { $in: ['', null] },
+            paymentStatus: booking.paymentStatus,
+            amount: booking.amount,
+            payoutStatus: booking.payoutStatus,
+            stripeSessionId: booking.stripeSessionId,
+            paymentReviewRequired: { $ne: true },
             date: booking.date,
             startTime: booking.startTime,
             endTime: booking.endTime,
           },
           {
-            $set: { date, startTime, endTime, isRescheduled: true },
+            $set: {
+              date, startTime, endTime, isRescheduled: true,
+              reminderSent: false, reminderSentAt: null, reminderLeaseUntil: null,
+            },
             $inc: { rescheduleCount: 1 },
           },
           { new: true }

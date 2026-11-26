@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
+import { User } from "../models/user.models.js";
 
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     const token = typeof authHeader === "string"
         ? authHeader.match(/^Bearer\s+(\S+)$/i)?.[1]
@@ -20,6 +21,12 @@ const auth = (req, res, next) => {
                 success: false,
                 message: "invalid token"
             });
+        }
+
+        const user = await User.findById(decoded.userId).select("+authVersion");
+        const tokenVersion = Number(decoded.authVersion || 0);
+        if (!user || Number(user.authVersion || 0) !== tokenVersion) {
+            return res.status(401).json({ success: false, message: "session expired" });
         }
 
         req.user = { id: decoded.userId };

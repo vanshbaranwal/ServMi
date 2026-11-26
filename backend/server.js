@@ -24,6 +24,7 @@ import { User } from "./models/user.models.js";
 import { Availability } from "./models/availability.models.js";
 import { Booking } from "./models/booking.models.js";
 import { getEmailConfigStatus } from "./utils/bookingNotifications.utils.js";
+import { sendUpcomingBookingReminders } from "./utils/bookingReminder.utils.js";
 
 
 const PORT = process.env.PORT || 5000;
@@ -114,6 +115,7 @@ const start = async () => {
         try {
             await repairMissingFulfillment();
             await repairPendingRefunds();
+            await sendUpcomingBookingReminders();
         } catch (error) {
             console.error("Booking fulfillment repair failed:", error);
         } finally {

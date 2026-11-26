@@ -22,6 +22,8 @@ import { isValidTimeRange } from "../utils/time.utils.js";
 import { formatBookingDateTime } from "../utils/bookingNotifications.utils.js";
 import { rateLimit } from "../middleware/rateLimit.middleware.js";
 import { getAllowedOrigins, getCoreConfigErrors, getIntegrationStatus, isCorsOriginAllowed } from "../config/runtime.config.js";
+import { bookingDateTimeToUtc } from "../utils/bookingReminder.utils.js";
+import { createBookingAccessToken, hashBookingAccessToken, hasBookingAccess } from "../utils/bookingAccess.utils.js";
 
 const objectId = "507f1f77bcf86cd799439011";
 const serviceId = "507f1f77bcf86cd799439012";
@@ -156,6 +158,30 @@ test("Confirmation email keeps the booked local calendar date", () => {
     const label = formatBookingDateTime({ date: "2099-11-18", startTime: "23:00", endTime: "23:30" });
     assert.match(label, /18 November 2099/);
     assert.match(label, /23:00-23:30/);
+});
+
+test("Customer booking access tokens are deterministic and checked by hash", () => {
+    const previousSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = "test-booking-secret-that-is-long-enough";
+    try {
+        const booking = { _id: objectId, customerEmail: "person@example.com" };
+        const token = createBookingAccessToken(booking);
+        const securedBooking = { ...booking, accessTokenHash: hashBookingAccessToken(token) };
+        assert.equal(token, createBookingAccessToken(booking));
+        assert.equal(hasBookingAccess(securedBooking, token), true);
+        assert.equal(hasBookingAccess(securedBooking, "wrong-token"), false);
+    } finally {
+        process.env.JWT_SECRET = previousSecret;
+    }
+});
+
+test("Booking reminders convert the business wall clock to UTC", () => {
+    const instant = bookingDateTimeToUtc({
+        date: "2026-11-26",
+        time: "10:00",
+        timeZone: "Asia/Kolkata"
+    });
+    assert.equal(instant.toISOString(), "2026-11-26T04:30:00.000Z");
 });
 
 test("Service prices follow the INR Checkout amount range", () => {
@@ -323,9 +349,10 @@ test("Stripe webhook rejects a bad signature and accepts a signed event", async 
 });
 
 test("Refund webhook keeps pending refunds pending and marks successful refunds complete", async () => {
-    const originals = { findById: Booking.findById, updateOne: Booking.updateOne };
+    const originals = { findById: Booking.findById, updateOne: Booking.updateOne, userUpdateOne: User.updateOne };
     const booking = {
         _id: objectId,
+        userId: objectId,
         amount: 2500,
         currency: "inr",
         paymentStatus: "refund_pending",
@@ -336,6 +363,7 @@ test("Refund webhook keeps pending refunds pending and marks successful refunds 
     Booking.updateOne = async (_query, update) => {
         booking.paymentStatus = update.$set.paymentStatus;
     };
+    User.updateOne = async () => ({});
     const event = (status) => ({
         type: "refund.updated",
         data: { object: {
@@ -355,6 +383,7 @@ test("Refund webhook keeps pending refunds pending and marks successful refunds 
     } finally {
         Booking.findById = originals.findById;
         Booking.updateOne = originals.updateOne;
+        User.updateOne = originals.userUpdateOne;
     }
 });
 

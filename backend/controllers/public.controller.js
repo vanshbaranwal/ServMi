@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import mongoose from "mongoose";
 import { Booking } from "../models/booking.models.js";
 import { Service } from "../models/service.models.js";
@@ -8,8 +7,11 @@ import { requestEmailOtp, verifyEmailOtp } from "../utils/emailOtp.utils.js";
 import { generateSlots } from "../utils/slotGenerator.utils.js";
 import { getStripe, isValidServicePrice, toStripeAmount } from "../utils/stripe.utils.js";
 import { calculatePlatformSplit } from "../utils/money.utils.js";
-import { confirmPaidCheckout, fulfillConfirmedBooking, markCheckoutFailed, validateCheckoutSession } from "../utils/checkoutFulfillment.utils.js";
+import { confirmPaidCheckout, fulfillConfirmedBooking, markCheckoutFailed, requestBookingRefund, validateCheckoutSession } from "../utils/checkoutFulfillment.utils.js";
 import { withBookingDateLock } from "../utils/bookingDateLock.utils.js";
+import { createBookingAccessToken, hashBookingAccessToken, hasBookingAccess } from "../utils/bookingAccess.utils.js";
+import { cancelBookingCalendarEvent } from "../utils/googleCalendar.utils.js";
+import { sendBookingNotification } from "../utils/bookingNotifications.utils.js";
 
 const CHECKOUT_MINUTES = 32;
 const HOLD_MINUTES = 35;
@@ -56,15 +58,6 @@ const toPublicBooking = (booking) => ({
     customerCalendarUrl: booking.customerCalendarUrl,
     createdAt: booking.createdAt
 });
-
-const createAccessToken = () => crypto.randomBytes(32).toString("base64url");
-const hashAccessToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
-const hasAccess = (booking, token) => {
-    if (typeof token !== "string" || !booking.accessTokenHash) return false;
-    const expected = Buffer.from(booking.accessTokenHash, "hex");
-    const actual = Buffer.from(hashAccessToken(token), "hex");
-    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
-};
 
 const businessClock = (business) => {
     const format = (timeZone) => new Intl.DateTimeFormat("en-GB", {
@@ -215,7 +208,6 @@ export const createPublicBooking = async (req, res) => {
             return errorResponse(res, 503, "Payments are not configured yet");
         }
 
-        const accessToken = createAccessToken();
         const { platformFeeAmount, providerPayoutAmount } = calculatePlatformSplit(amount);
         const customerCalendarUrl = buildCustomerCalendarUrl({
             business, service,
@@ -235,7 +227,6 @@ export const createPublicBooking = async (req, res) => {
             paymentStatus: amount > 0 ? "pending" : "not_required",
             status: amount > 0 ? "pending_payment" : "confirmed",
             holdExpiresAt: amount > 0 ? new Date(Date.now() + HOLD_MINUTES * 60 * 1000) : undefined,
-            accessTokenHash: hashAccessToken(accessToken),
             fulfillmentVersion: 1,
             customerCalendarUrl
         };
@@ -259,6 +250,10 @@ export const createPublicBooking = async (req, res) => {
             }
         });
         if (!booking) return errorResponse(res, 409, "That slot is no longer available");
+
+        const accessToken = createBookingAccessToken(booking);
+        booking.accessTokenHash = hashBookingAccessToken(accessToken);
+        await booking.save();
 
         if (amount === 0) {
             let confirmed = booking;
@@ -349,7 +344,7 @@ export const getBookingStatus = async (req, res) => {
             ? { stripeSessionId: sessionId }
             : { _id: bookingId }
         ).select("+accessTokenHash");
-        if (!booking || !hasAccess(booking, accessToken)) {
+        if (!booking || !hasBookingAccess(booking, accessToken)) {
             return errorResponse(res, 404, "Booking not found");
         }
 
@@ -388,7 +383,7 @@ export const cancelPublicBookingPayment = async (req, res) => {
         }
 
         const booking = await Booking.findById(bookingId).select("+accessTokenHash");
-        if (!booking || !hasAccess(booking, accessToken)) {
+        if (!booking || !hasBookingAccess(booking, accessToken)) {
             return errorResponse(res, 404, "Booking not found");
         }
         if (["refund_pending", "refunded", "refund_failed"].includes(booking.paymentStatus)) {
@@ -433,5 +428,64 @@ export const cancelPublicBookingPayment = async (req, res) => {
     } catch (error) {
         console.error("Public Checkout cancellation failed:", error);
         return errorResponse(res, 503, "Unable to cancel payment right now");
+    }
+};
+
+export const cancelPublicBooking = async (req, res) => {
+    try {
+        const { booking_id: bookingId, access_token: bodyToken } = req.body || {};
+        const accessToken = req.get?.("X-Booking-Access-Token") || bodyToken;
+        if (!mongoose.isValidObjectId(bookingId) || !accessToken) {
+            return errorResponse(res, 400, "booking_id and access token are required");
+        }
+
+        const booking = await Booking.findById(bookingId).select("+accessTokenHash");
+        if (!booking || !hasBookingAccess(booking, accessToken)) {
+            return errorResponse(res, 404, "Booking not found");
+        }
+        if (booking.status === "cancelled") {
+            return res.json({ success: true, message: "Booking is already cancelled", booking: toPublicBooking(booking) });
+        }
+        const isFree = booking.status === "confirmed" && booking.paymentStatus === "not_required" && Number(booking.amount || 0) === 0;
+        const isPaid = booking.status === "confirmed" && booking.paymentStatus === "paid" && Number(booking.amount || 0) > 0;
+        if (!isFree && !isPaid) {
+            return errorResponse(res, 409, "This booking cannot be cancelled online. Contact the provider for help.");
+        }
+
+        let updated;
+        if (isPaid) {
+            updated = await requestBookingRefund({ booking, reason: "customer_cancelled" });
+            updated = await updated.populate("serviceId", "name duration price");
+        } else {
+            updated = await Booking.findOneAndUpdate(
+            {
+                _id: booking._id,
+                status: "confirmed",
+                paymentStatus: "not_required",
+                amount: 0
+            },
+            { $set: { status: "cancelled" } },
+            { new: true }
+        ).populate("serviceId", "name duration price");
+        }
+        if (!updated) return errorResponse(res, 409, "Booking changed. Refresh and try again.");
+
+        const business = await User.findById(updated.userId);
+        if (business) {
+            try {
+                await cancelBookingCalendarEvent({ business, booking: updated });
+            } catch (calendarError) {
+                console.error("Customer cancellation calendar cleanup failed:", calendarError.message);
+            }
+            if (updated.serviceId) {
+                sendBookingNotification({ business, service: updated.serviceId, booking: updated, type: "cancelled" })
+                    .catch((emailError) => console.error("Customer cancellation email failed:", emailError.message));
+            }
+        }
+
+        return res.json({ success: true, message: "Booking cancelled", booking: toPublicBooking(updated) });
+    } catch (error) {
+        console.error("Public booking cancellation failed:", error);
+        return errorResponse(res, error.statusCode || 500, error.statusCode ? error.message : "Unable to cancel this booking right now");
     }
 };
